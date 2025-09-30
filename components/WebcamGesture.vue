@@ -1,33 +1,31 @@
 <template>
-  <div class="gesture-wrapper">
-    <!-- Kotak deteksi gesture -->
-    <div class="gesture-box">
-      <h2 v-if="loading">📷 Menyiapkan Kamera...</h2>
+  <div class="container">
+    <!-- Kotak kamera -->
+    <div class="video-box">
+      <h2 v-if="loading" class="loader">📷 Menyiapkan Kamera...</h2>
       <video v-else ref="video" autoplay playsinline></video>
-      <!-- Subtitle sinkron dengan audio -->
-      <div class="subtitle" v-html="spokenText"></div>
+      <div class="subtitle" v-html="subtitleText"></div>
     </div>
 
-    <!-- Kontrol & pengaturan -->
+    <!-- Kontrol dan pengaturan -->
     <div class="controls">
-      <!-- Pilih suara -->
       <div v-if="availableVoices.length" class="voice-selector">
-        <label for="voice">🔊 Pilih Suara:</label>
-        <select id="voice" v-model="selectedVoice">
+        <label>🔊 Pilih Suara:</label>
+        <select v-model="selectedVoice">
           <option v-for="v in availableVoices" :key="v.name" :value="v">{{ v.name }}</option>
         </select>
         <button @click="speak('Tes suara bahasa Indonesia')">▶ Tes</button>
       </div>
 
-      <!-- Tombol simulasi jika kamera tidak ada -->
-      <div v-if="!hasCamera" class="sim-buttons">
-        <button @click="simulateGesture('hand')">👋 Angkat Tangan</button>
-        <button @click="simulateGesture('wave')">👏 Lambaikan Tangan</button>
-      </div>
-
-      <!-- Tombol pause/resume -->
-      <div v-if="hasCamera" class="sim-buttons">
-        <button @click="toggleDetection">{{ isDetecting ? '⏸ Pause' : '▶ Resume' }}</button>
+      <div class="buttons">
+        <template v-if="!hasCamera">
+          <button @click="simulateGesture('hand')">👋 Angkat Tangan</button>
+          <button @click="simulateGesture('head')">🤓 Kepala Mengangguk</button>
+          <button @click="simulateGesture('wave')">👏 Lambaikan Tangan</button>
+        </template>
+        <template v-else>
+          <button @click="toggleDetection">{{ isDetecting ? '⏸ Pause' : '▶ Resume' }}</button>
+        </template>
       </div>
     </div>
   </div>
@@ -42,66 +40,64 @@ const video = ref(null)
 const loading = ref(true)
 const hasCamera = ref(true)
 const isDetecting = ref(true)
-const spokenText = ref('')
+const subtitleText = ref('')
 const availableVoices = ref([])
 const selectedVoice = ref(null)
-let cameraOn = ref(false)
 
-const gesturePlayed = { hand: false, wave: false }
-const myInfo = `<strong>Halo! Saya Hilal Abdilah</strong><br>Mahasiswa baru Teknik Informatika<br>`
+let gestureFlags = { hand: false, head: false, wave: false }
+let isSpeaking = false
 
-// Load voices
+const myInfo = `<strong>Halo semua! Perkenalkan saya Hilal Abdilah</strong><br>Mahasiswa baru Teknik Informatika<br>`
+
+// Load voice
 function loadVoices() {
   availableVoices.value = speechSynthesis.getVoices()
   selectedVoice.value =
-    availableVoices.value.find(v => v.name.toLowerCase().includes('indonesia')) ||
     availableVoices.value.find(v => v.lang.includes('id')) ||
-    availableVoices.value[0] || null
+    availableVoices.value.find(v => v.lang.includes('en')) ||
+    availableVoices.value[0]
 }
 
-// TTS sinkron dengan subtitle
-let isSpeaking = false
+// Speak function
 function speak(text) {
-  if (isSpeaking || !selectedVoice.value) return
+  if (isSpeaking) return
+  if (!selectedVoice.value) return
   const utter = new SpeechSynthesisUtterance(text)
   utter.voice = selectedVoice.value
   utter.rate = 0.9
-  utter.pitch = 1
+  utter.pitch = 1.05
   utter.volume = 1
-  spokenText.value = text
   isSpeaking = true
   utter.onend = () => { isSpeaking = false }
   speechSynthesis.speak(utter)
 }
 
-// Confetti saat gesture
+// Confetti effect
 function showConfetti() {
   for (let i = 0; i < 25; i++) {
     const conf = document.createElement('div')
     conf.classList.add('confetti')
     conf.style.left = Math.random() * window.innerWidth + 'px'
-    conf.style.backgroundColor = `hsl(${Math.random()*360},70%,60%)`
+    conf.style.backgroundColor = `hsl(${Math.random()*360}, 70%, 60%)`
     document.body.appendChild(conf)
-    setTimeout(()=>document.body.removeChild(conf),2000)
+    setTimeout(() => document.body.removeChild(conf), 2000)
   }
 }
 
-// Setup camera depan/belakang
+// Setup camera
 async function setupCamera() {
-  if(!navigator.mediaDevices?.getUserMedia){
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     hasCamera.value = false
     loading.value = false
     return
   }
-  try{
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment' } // belakang, ganti 'user' utk depan
-    })
+  try {
+    const constraints = { video: { facingMode: 'environment' } } // kamera belakang
+    const stream = await navigator.mediaDevices.getUserMedia(constraints)
     video.value.srcObject = stream
-    await new Promise(resolve=> video.value.onloadedmetadata = ()=>resolve(video.value))
+    await new Promise(r => { video.value.onloadedmetadata = () => r(video.value) })
     loading.value = false
-    cameraOn.value = true
-  }catch(err){
+  } catch (err) {
     console.warn('Kamera tidak tersedia:', err)
     hasCamera.value = false
     loading.value = false
@@ -111,150 +107,98 @@ async function setupCamera() {
 // Gesture detection
 async function runGestureDetection() {
   await setupCamera()
-  if(!cameraOn.value) return
+  if (!hasCamera.value) return
 
-  await tf.setBackend('webgl') // fallback otomatis jika webgpu tidak ada
+  await tf.setBackend('webgl')
   await tf.ready()
 
   const detector = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet)
 
-  async function detect(){
-    if(!isDetecting.value){ requestAnimationFrame(detect); return }
+  async function detect() {
+    if (!isDetecting.value) { requestAnimationFrame(detect); return }
+
     const poses = await detector.estimatePoses(video.value)
-    if(poses.length>0){
+    if (poses.length > 0) {
       const keypoints = poses[0].keypoints
-      const leftWrist = keypoints.find(p=>p.name==='left_wrist')
-      const rightWrist = keypoints.find(p=>p.name==='right_wrist')
-      const nose = keypoints.find(p=>p.name==='nose')
+      const leftWrist = keypoints.find(p => p.name === 'left_wrist')
+      const rightWrist = keypoints.find(p => p.name === 'right_wrist')
+      const nose = keypoints.find(p => p.name === 'nose')
 
       // Angkat tangan
-      if(!gesturePlayed.hand && (leftWrist.y<nose.y || rightWrist.y<nose.y)){
-        gesturePlayed.hand = true
-        speak(myInfo)
+      if ((leftWrist.y < nose.y || rightWrist.y < nose.y) && !gestureFlags.hand) {
+        gestureFlags.hand = true
+        subtitleText.value = myInfo
+        speak('Halo semuanya! Perkenalkan, saya Hilal Abdilah, mahasiswa baru Teknik Informatika. Senang bertemu dengan kalian!')
         showConfetti()
-        setTimeout(()=>gesturePlayed.hand=false,3000)
+        setTimeout(() => gestureFlags.hand = false, 4000)
+      }
+
+      // Kepala mengangguk
+      const leftEye = keypoints.find(p => p.name==='left_eye')
+      const rightEye = keypoints.find(p => p.name==='right_eye')
+      if ((leftEye.y - rightEye.y) < -15 && !gestureFlags.head) {
+        gestureFlags.head = true
+        subtitleText.value = 'Terima kasih, sampai jumpa!'
+        speak('Terima kasih, sampai jumpa!')
+        showConfetti()
+        setTimeout(() => gestureFlags.head = false, 4000)
       }
 
       // Lambaikan tangan
-      if(!gesturePlayed.wave && Math.abs(leftWrist.x-rightWrist.x)>150){
-        gesturePlayed.wave = true
+      if ((leftWrist.x - rightWrist.x) > 150 && !gestureFlags.wave) {
+        gestureFlags.wave = true
+        subtitleText.value = 'Himatika! Kita pasti bisa!'
         speak('Himatika! Kita pasti bisa!')
         showConfetti()
-        setTimeout(()=>gesturePlayed.wave=false,3000)
+        setTimeout(() => gestureFlags.wave = false, 4000)
       }
     }
-    requestAnimationFrame(detect)
+    setTimeout(() => requestAnimationFrame(detect), 66)
   }
   detect()
 }
 
 // Simulasi gesture
-function simulateGesture(type){
-  switch(type){
-    case 'hand': speak(myInfo); break
-    case 'wave': speak('Himatika! Kita pasti bisa!'); break
+function simulateGesture(type) {
+  switch(type) {
+    case 'hand':
+      subtitleText.value = myInfo
+      speak('Halo semuanya! Perkenalkan, saya Hilal Abdilah, mahasiswa baru Teknik Informatika. Senang bertemu dengan kalian!')
+      break
+    case 'head':
+      subtitleText.value = 'Terima kasih, sampai jumpa!'
+      speak('Terima kasih, sampai jumpa!')
+      break
+    case 'wave':
+      subtitleText.value = 'Himatika! Kita pasti bisa!'
+      speak('Himatika! Kita pasti bisa!')
+      break
   }
   showConfetti()
 }
 
-// Pause/resume detection
-function toggleDetection(){ isDetecting.value = !isDetecting.value }
+// Toggle detection
+function toggleDetection() { isDetecting.value = !isDetecting.value }
 
-onMounted(()=>{
+onMounted(() => {
   loadVoices()
-  if(speechSynthesis.onvoiceschanged!==undefined) speechSynthesis.onvoiceschanged = loadVoices
+  if (speechSynthesis.onvoiceschanged !== undefined) speechSynthesis.onvoiceschanged = loadVoices
   runGestureDetection()
 })
 </script>
 
 <style scoped>
-.gesture-wrapper{
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  gap:1rem;
-  padding:1rem;
-}
-
-.gesture-box{
-  position:relative;
-  width:85vw;
-  max-width:400px;
-  aspect-ratio:4/3;
-  border:3px solid #007bff;
-  border-radius:15px;
-  overflow:hidden;
-}
-
-video{
-  width:100%;
-  height:100%;
-  object-fit:cover;
-}
-
-.subtitle{
-  position:absolute;
-  bottom:10px;
-  left:10px;
-  background:rgba(0,0,0,0.6);
-  color:white;
-  padding:5px 10px;
-  border-radius:10px;
-  max-width:90%;
-  font-size:0.95rem;
-}
-
-.controls{
-  display:flex;
-  flex-direction:column;
-  gap:0.5rem;
-  width:100%;
-  max-width:420px;
-}
-
-.voice-selector, .sim-buttons{
-  display:flex;
-  gap:0.5rem;
-  flex-wrap:wrap;
-  justify-content:center;
-}
-
-.voice-selector select{
-  padding:0.3rem 0.5rem;
-  border-radius:6px;
-  border:1px solid #ccc;
-}
-
-.voice-selector button{
-  background:#007bff;
-  color:white;
-  border:none;
-  padding:0.3rem 0.6rem;
-  border-radius:6px;
-  cursor:pointer;
-}
-
-.sim-buttons button{
-  background:#28a745;
-  color:white;
-  border:none;
-  padding:0.5rem 0.8rem;
-  border-radius:8px;
-  cursor:pointer;
-}
-
-.sim-buttons button:hover, .voice-selector button:hover{
-  opacity:0.85;
-}
-
-.confetti{
-  position:fixed;
-  width:8px;
-  height:8px;
-  animation:fall 2s linear forwards;
-}
-
-@keyframes fall{
-  to{ transform:translateY(100vh) rotate(720deg); opacity:0; }
-}
+.container { display:flex; flex-direction:column; align-items:center; gap:1rem; padding:1rem; }
+.video-box { position:relative; width:85vw; max-width:400px; border-radius:15px; overflow:hidden; box-shadow:0 4px 15px rgba(0,0,0,0.3); }
+video { width:100%; border-radius:15px; transform:scaleX(1); } /* tidak mirror */
+.subtitle { position:absolute; bottom:10px; left:10px; right:10px; background:rgba(0,0,0,0.6); color:white; padding:5px 10px; border-radius:10px; font-size:0.9rem; }
+.controls { display:flex; flex-direction:column; gap:0.8rem; width:100%; max-width:450px; }
+.voice-selector { display:flex; align-items:center; gap:0.5rem; background:#f0f0f0; padding:0.5rem 1rem; border-radius:10px; }
+.voice-selector select { border-radius:5px; padding:0.3rem 0.5rem; border:1px solid #ccc; }
+.buttons { display:flex; flex-wrap:wrap; gap:0.5rem; justify-content:center; }
+.buttons button { padding:0.5rem 1rem; border-radius:10px; border:none; background:#28a745; color:white; cursor:pointer; }
+.buttons button:hover { background:#218838; }
+.confetti { position:fixed; width:8px; height:8px; animation:fall 2s linear forwards; }
+@keyframes fall { to { transform:translateY(100vh) rotate(720deg); opacity:0; } }
+.loader { text-align:center; font-size:1rem; padding:1rem; }
 </style>
