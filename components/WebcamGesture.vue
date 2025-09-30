@@ -7,14 +7,26 @@
     </div>
 
     <!-- Info Perkenalan -->
-    <div class="info-text" v-if="showInfo" v-html="infoText"></div>
+    <transition name="fade">
+      <div class="info-text" v-if="showInfo" v-html="infoText"></div>
+    </transition>
 
     <!-- Kontrol -->
     <div class="controls">
-      <button v-if="hasCamera" @click="toggleDetection">
+      <button
+        v-if="hasCamera"
+        class="btn"
+        @click="toggleDetection"
+      >
         {{ isDetecting ? "⏸ Pause" : "▶ Resume" }}
       </button>
-      <button v-else @click="simulateGesture">👋 Simulasi Angkat Tangan</button>
+      <button
+        v-else
+        class="btn"
+        @click="simulateGesture"
+      >
+        👋 Simulasi Angkat Tangan
+      </button>
     </div>
   </div>
 </template>
@@ -45,17 +57,20 @@ function speak(text) {
   if (isSpeaking) return
   const synth = window.speechSynthesis
   if (!synth) return
+
   const voices = synth.getVoices()
   const voice =
     voices.find(v => v.lang.includes("id")) ||
     voices.find(v => v.name.toLowerCase().includes("indonesia")) ||
     voices[0]
+
   const utter = new SpeechSynthesisUtterance(text)
   utter.lang = "id-ID"
   utter.voice = voice
   utter.rate = 0.95
   utter.pitch = 1.05
   utter.volume = 1
+
   isSpeaking = true
   utter.onend = () => (isSpeaking = false)
   synth.speak(utter)
@@ -100,29 +115,40 @@ async function runGestureDetection() {
   if (!hasCamera.value) return
   await setupBackend()
 
-  detector = await poseDetection.createDetector(
-    poseDetection.SupportedModels.MoveNet
-  )
+  try {
+    detector = await poseDetection.createDetector(
+      poseDetection.SupportedModels.MoveNet
+    )
+  } catch (e) {
+    console.error("Gagal load detector:", e)
+    return
+  }
 
   async function detect() {
     if (!isDetecting.value) {
       requestAnimationFrame(detect)
       return
     }
-    const poses = await detector.estimatePoses(video.value)
-    if (poses.length > 0) {
-      const keypoints = poses[0].keypoints
-      const leftWrist = keypoints.find(p => p.name === "left_wrist")
-      const rightWrist = keypoints.find(p => p.name === "right_wrist")
-      const nose = keypoints.find(p => p.name === "nose")
 
-      if ((leftWrist?.y < nose?.y || rightWrist?.y < nose?.y) && !showInfo.value) {
-        infoText.value = myInfo
-        showInfo.value = true
-        speak("Halo semuanya! Perkenalkan, saya Hilal Abdilah, mahasiswa baru Teknik Informatika.")
+    try {
+      const poses = await detector.estimatePoses(video.value)
+      if (poses.length > 0) {
+        const keypoints = poses[0].keypoints
+        const leftWrist = keypoints.find(p => p.name === "left_wrist")
+        const rightWrist = keypoints.find(p => p.name === "right_wrist")
+        const nose = keypoints.find(p => p.name === "nose")
+
+        if ((leftWrist?.y < nose?.y || rightWrist?.y < nose?.y) && !showInfo.value) {
+          infoText.value = myInfo
+          showInfo.value = true
+          speak("Halo semuanya! Perkenalkan, saya Hilal Abdilah, mahasiswa baru Teknik Informatika.")
+        }
       }
+    } catch (err) {
+      console.warn("Deteksi gagal sementara:", err)
     }
-    setTimeout(() => requestAnimationFrame(detect), 100)
+
+    requestAnimationFrame(detect)
   }
   detect()
 }
@@ -150,11 +176,12 @@ onMounted(() => {
   align-items: center;
   gap: 1rem;
   padding: 1rem;
+  min-height: 100vh;
+  background: #f9fafb;
 }
 
 /* Kamera */
 .camera-box {
-  position: relative;
   width: 100%;
   max-width: 420px;
   background: #fff;
@@ -171,31 +198,45 @@ video {
 
 /* Info */
 .info-text {
-  background: rgba(0, 0, 0, 0.75);
+  background: rgba(0, 0, 0, 0.8);
   color: #fff;
-  padding: 0.6rem 1rem;
-  border-radius: 8px;
-  font-size: 0.95rem;
+  padding: 0.8rem 1.2rem;
+  border-radius: 10px;
+  font-size: 1rem;
   text-align: center;
   max-width: 420px;
+  line-height: 1.4;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
 }
 
 /* Kontrol */
 .controls {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.75rem;
   flex-wrap: wrap;
   justify-content: center;
 }
-.controls button {
-  padding: 0.5rem 1rem;
+.btn {
+  padding: 0.6rem 1.2rem;
   border-radius: 10px;
   border: none;
-  background: #28a745;
+  background: #2563eb;
   color: white;
+  font-weight: 500;
   cursor: pointer;
+  transition: background 0.2s ease;
 }
-.controls button:hover {
-  background: #218838;
+.btn:hover {
+  background: #1e40af;
+}
+
+/* Animasi */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.5s;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>
