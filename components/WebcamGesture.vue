@@ -7,8 +7,7 @@
         <div class="relative w-full max-w-xl aspect-video bg-black rounded-xl shadow-lg overflow-hidden">
           <video ref="video" autoplay playsinline muted class="w-full h-full object-cover"></video>
           <transition name="fade">
-            <div v-if="spokenText"
-                 class="absolute bottom-2 left-1/2 transform -translate-x-1/2 bg-black/70 px-4 py-2 rounded-lg text-sm text-center">
+            <div v-if="spokenText" class="absolute bottom-2 left-1/2 transform -translate-x-1/2 bg-black/70 px-4 py-2 rounded-lg text-sm text-center">
               {{ spokenText }}
             </div>
           </transition>
@@ -20,7 +19,6 @@
         <div>
           <h2 class="text-lg font-bold mb-4">⚙️ Pengaturan</h2>
 
-          <!-- Pilih Kamera -->
           <label class="block mb-3">
             Kamera:
             <select v-model="facingMode" @change="changeCamera" class="mt-1 w-full p-2 rounded bg-gray-700">
@@ -29,7 +27,6 @@
             </select>
           </label>
 
-          <!-- Bahasa -->
           <label class="block mb-3">
             Bahasa:
             <select v-model="selectedLang" class="mt-1 w-full p-2 rounded bg-gray-700">
@@ -38,19 +35,18 @@
             </select>
           </label>
 
-          <!-- Suara -->
           <label class="block mb-3">
             Suara:
             <select v-model="selectedVoice" class="mt-1 w-full p-2 rounded bg-gray-700">
               <option v-for="v in voices" :key="v.name" :value="v.name">{{ v.name }}</option>
             </select>
           </label>
+
+          <button @click="enableAudio" class="bg-blue-600 p-2 rounded mt-2 w-full hover:bg-blue-700">▶ Test Suara</button>
         </div>
 
-        <!-- Tombol Kamera / Simulasi -->
         <div class="mt-4 flex flex-col gap-2">
-          <button v-if="cameraAvailable" @click="toggleCamera"
-                  class="py-2 px-3 bg-blue-600 hover:bg-blue-700 rounded-lg">
+          <button v-if="cameraAvailable" @click="toggleCamera" class="py-2 px-3 bg-blue-600 hover:bg-blue-700 rounded-lg">
             {{ cameraOn ? '📴 Matikan Kamera' : '📷 Nyalakan Kamera' }}
           </button>
 
@@ -77,26 +73,42 @@ const selectedVoice = ref('')
 const voices = ref([])
 const cameraOn = ref(false)
 const cameraAvailable = ref(true)
-const facingMode = ref('user') // default depan
-
+const facingMode = ref('user')
 let detector = null
 let stream = null
+let audioEnabled = ref(false)
+
+// Past gestures tracker
+const gesturePlayed = ref({ hand:false, head:false, wave:false })
+
 const myInfo = 'Halo semuanya! Perkenalkan, saya Hilal Abdilah, mahasiswa baru Teknik Informatika. Senang bertemu dengan kalian semua!'
 
 function loadVoices() {
   voices.value = speechSynthesis.getVoices()
-  selectedVoice.value = voices.value.find(v => v.lang.includes('id'))?.name || voices.value[0]?.name || ''
+  selectedVoice.value = voices.value.find(v => v.lang.includes('id'))?.name 
+                        || voices.value.find(v=>v.lang.includes('en'))?.name 
+                        || voices.value[0]?.name 
+                        || ''
+}
+
+function enableAudio(){
+  if(audioEnabled.value) return
+  speak('Halo! Tes suara berhasil diaktifkan.')
+  audioEnabled.value = true
 }
 
 function speak(text){
+  if(!audioEnabled.value) return
+  window.speechSynthesis.cancel()
   const utter = new SpeechSynthesisUtterance(text)
   utter.lang = selectedLang.value
-  const voice = voices.value.find(v => v.name === selectedVoice.value)
+  const voice = voices.value.find(v=>v.name===selectedVoice.value)
   if(voice) utter.voice = voice
-  utter.rate = 0.95
-  utter.pitch = 1.05
+  utter.rate=0.95
+  utter.pitch=1.05
   window.speechSynthesis.speak(utter)
   spokenText.value = text
+  utter.onend = ()=>{ spokenText.value = '' }
 }
 
 function showConfetti(){
@@ -110,36 +122,25 @@ function showConfetti(){
   }
 }
 
-// ✅ Setup kamera
 async function setupCamera() {
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-    cameraAvailable.value = false
+    cameraAvailable.value=false
     return
   }
-  try {
+  try{
     if(stream) stream.getTracks().forEach(t=>t.stop())
-    stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode: facingMode.value } })
+    stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:facingMode.value } })
     video.value.srcObject = stream
-    cameraAvailable.value = true
-  } catch{
-    cameraAvailable.value = false
-  }
+    cameraAvailable.value=true
+  }catch{ cameraAvailable.value=false }
 }
 
 async function changeCamera(){
-  if(cameraOn.value){
-    await setupCamera()
-    detector = await posedetection.createDetector(posedetection.SupportedModels.MoveNet)
-    runDetection()
-  }
+  if(cameraOn.value){ await setupCamera(); detector = await posedetection.createDetector(posedetection.SupportedModels.MoveNet); runDetection() }
 }
 
 async function toggleCamera(){
-  if(cameraOn.value){
-    stream.getTracks().forEach(t=>t.stop())
-    cameraOn.value=false
-    return
-  }
+  if(cameraOn.value){ stream.getTracks().forEach(t=>t.stop()); cameraOn.value=false; return }
   await setupCamera()
   cameraOn.value=true
   await initTF()
@@ -162,10 +163,19 @@ async function runDetection(){
       const rightWrist = poses[0].keypoints.find(p=>p.name==='right_wrist')
       const nose = poses[0].keypoints.find(p=>p.name==='nose')
 
-      // ✅ Gesture langsung trigger suara & teks
-      if(leftWrist && rightWrist && nose && (leftWrist.y<nose.y || rightWrist.y<nose.y)){
-        speak(myInfo)
-        showConfetti()
+      if(leftWrist && rightWrist && nose){
+        // Hand gesture
+        if(!gesturePlayed.value.hand && (leftWrist.y<nose.y || rightWrist.y<nose.y)){
+          speak(myInfo)
+          gesturePlayed.value.hand=true
+          showConfetti()
+        }
+        // Wave gesture (x difference)
+        if(!gesturePlayed.value.wave && Math.abs(leftWrist.x-rightWrist.x)>150){
+          speak('Himatika! Kita pasti bisa!')
+          gesturePlayed.value.wave=true
+          showConfetti()
+        }
       }
     }
   }catch(e){console.warn(e)}
@@ -173,19 +183,18 @@ async function runDetection(){
 }
 
 function simulateGesture(type){
+  if(gesturePlayed.value[type]) return
   switch(type){
-    case 'hand': speak(myInfo); break
-    case 'head': speak('Terima kasih, sampai jumpa!'); break
-    case 'wave': speak('Himatika! Kita pasti bisa!'); break
+    case 'hand': speak(myInfo); gesturePlayed.value.hand=true; break
+    case 'head': speak('Terima kasih, sampai jumpa!'); gesturePlayed.value.head=true; break
+    case 'wave': speak('Himatika! Kita pasti bisa!'); gesturePlayed.value.wave=true; break
   }
   showConfetti()
 }
 
 onMounted(()=>{
   loadVoices()
-  if(speechSynthesis.onvoiceschanged!==undefined){
-    speechSynthesis.onvoiceschanged=loadVoices
-  }
+  if(speechSynthesis.onvoiceschanged!==undefined) speechSynthesis.onvoiceschanged=loadVoices
   setupCamera()
 })
 </script>
