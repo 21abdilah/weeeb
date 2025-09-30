@@ -50,10 +50,11 @@ const isDetecting = ref(true)
 const availableVoices = ref([])
 const selectedVoice = ref(null)
 
-const myInfo = 
+// Gunakan backtick (``) untuk HTML string
+const myInfo = `
   <strong>Halo! Saya Hilal Abdilah</strong><br>
   Mahasiswa baru Teknik Informatika<br>
-
+`
 
 let isSpeaking = false
 
@@ -94,7 +95,9 @@ async function setupCamera() {
     return
   }
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true })
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user" } // pakai kamera depan default
+    })
     video.value.srcObject = stream
     await new Promise(resolve => {
       video.value.onloadedmetadata = () => resolve(video.value)
@@ -116,7 +119,7 @@ async function setupBackend() {
       console.log("Backend aktif:", b)
       return
     } catch (e) {
-      console.warn(Backend ${b} gagal, coba berikutnya...)
+      console.warn(`Backend ${b} gagal, coba berikutnya...`)
     }
   }
 }
@@ -232,8 +235,7 @@ video {
 .controls {
   display: flex;
   gap: 0.5rem;
-  flex-wrap: w
-rap;
+  flex-wrap: wrap;
   justify-content: center;
 }
 .controls button {
