@@ -1,35 +1,25 @@
 <template>
   <div class="page-wrapper">
-    <!-- Kotak Kamera -->
+    <!-- Kamera -->
     <div class="camera-box">
       <h2 v-if="loading" class="loader">📷 Menyiapkan Kamera...</h2>
-      <video v-else ref="video" autoplay playsinline></video>
+      <video v-else ref="video" autoplay playsinline muted></video>
     </div>
 
     <!-- Info teks -->
-    <div class="info-text" v-if="showInfo" v-html="infoText"></div>
+    <transition name="fade">
+      <div class="info-text" v-if="showInfo" v-html="infoText"></div>
+    </transition>
 
-    <!-- Pengaturan suara -->
-    <div class="voice-box" v-if="availableVoices.length">
-      <label for="voice">🔊 Pilih Suara:</label>
-      <select id="voice" v-model="selectedVoice">
-        <option v-for="v in availableVoices" :key="v.name" :value="v">{{ v.name }}</option>
-      </select>
-      <button @click="speak('Tes suara bahasa Indonesia')">▶ Tes</button>
-    </div>
-
-    <!-- Tombol Kontrol -->
+    <!-- Kontrol -->
     <div class="controls">
-      <template v-if="!hasCamera">
-        <button @click="simulateGesture('hand')">👋 Angkat Tangan</button>
-        <button @click="simulateGesture('head')">🤓 Kepala Mengangguk</button>
-        <button @click="simulateGesture('wave')">👏 Lambaikan Tangan</button>
-      </template>
-
+      <button v-if="hasCamera" @click="toggleDetection">
+        {{ isDetecting ? "⏸ Pause" : "▶ Resume" }}
+      </button>
       <template v-else>
-        <button @click="toggleDetection">
-          {{ isDetecting ? "⏸ Pause" : "▶ Resume" }}
-        </button>
+        <button @click="simulateGesture('hand')">👋 Angkat Tangan</button>
+        <button @click="simulateGesture('head')">🤓 Angguk Kepala</button>
+        <button @click="simulateGesture('wave')">👏 Lambaikan Tangan</button>
       </template>
     </div>
   </div>
@@ -41,72 +31,63 @@ import * as tf from "@tensorflow/tfjs"
 import * as poseDetection from "@tensorflow-models/pose-detection"
 
 const video = ref(null)
-const showInfo = ref(false)
-const infoText = ref("")
 const loading = ref(true)
 const hasCamera = ref(true)
 const isDetecting = ref(true)
 
-const availableVoices = ref([])
-const selectedVoice = ref(null)
-
+const showInfo = ref(false)
+const infoText = ref("")
 const myInfo = `
   <strong>Halo! Saya Hilal Abdilah</strong><br>
   Mahasiswa baru Teknik Informatika<br>
 `
 
+let detector = null
 let isSpeaking = false
 
-// Load voices
-function loadVoices() {
-  availableVoices.value = speechSynthesis.getVoices()
-  selectedVoice.value =
-    availableVoices.value.find(v => v.name.toLowerCase().includes("indonesia")) ||
-    availableVoices.value.find(v => v.lang.includes("id")) ||
-    availableVoices.value[0] ||
-    null
-}
-
+// Text-to-Speech
 function speak(text) {
   if (isSpeaking) return
-  if (availableVoices.value.length === 0) {
-    speechSynthesis.onvoiceschanged = () => {
-      loadVoices()
-      speak(text)
-    }
-    return
-  }
+  const synth = window.speechSynthesis
+  if (!synth) return
+
+  let voices = synth.getVoices()
+  let voice =
+    voices.find(v => v.lang.includes("id")) ||
+    voices.find(v => v.name.toLowerCase().includes("indonesia")) ||
+    voices[0]
+
   const utter = new SpeechSynthesisUtterance(text)
+  utter.voice = voice
   utter.lang = "id-ID"
-  utter.voice = selectedVoice.value
   utter.rate = 0.95
   utter.pitch = 1.05
-  utter.volume = 1
-  isSpeaking = true
   utter.onend = () => (isSpeaking = false)
-  speechSynthesis.speak(utter)
+
+  isSpeaking = true
+  synth.speak(utter)
 }
 
+// Kamera
 async function setupCamera() {
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    hasCamera.value = false
-    loading.value = false
-    return
-  }
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true })
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user" }
+    })
     video.value.srcObject = stream
     await new Promise(resolve => {
-      video.value.onloadedmetadata = () => resolve(video.value)
+      video.value.onloadedmetadata = () => resolve()
     })
-    loading.value = false
+    hasCamera.value = true
   } catch (err) {
-    console.warn("Kamera tidak tersedia:", err)
+    console.warn("Kamera gagal:", err)
     hasCamera.value = false
+  } finally {
     loading.value = false
   }
 }
 
+// Backend TensorFlow
 async function setupBackend() {
   const backends = ["webgl", "wasm", "cpu"]
   for (const b of backends) {
@@ -121,17 +102,23 @@ async function setupBackend() {
   }
 }
 
-async function runGestureDetection() {
-  await setupCamera()
-  if (!hasCamera.value) return
+// Deteksi Gesture
+async function runDetection() {
   await setupBackend()
-  const detector = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet)
+  detector = await poseDetection.createDetector(
+    poseDetection.SupportedModels.MoveNet
+  )
 
   async function detect() {
     if (!isDetecting.value) {
       requestAnimationFrame(detect)
       return
     }
+    if (!video.value) {
+      requestAnimationFrame(detect)
+      return
+    }
+
     const poses = await detector.estimatePoses(video.value)
     if (poses.length > 0) {
       const keypoints = poses[0].keypoints
@@ -145,11 +132,14 @@ async function runGestureDetection() {
         speak("Halo semuanya! Perkenalkan, saya Hilal Abdilah, mahasiswa baru Teknik Informatika.")
       }
     }
-    setTimeout(() => requestAnimationFrame(detect), 66)
+
+    setTimeout(() => requestAnimationFrame(detect), 80)
   }
+
   detect()
 }
 
+// Simulasi gesture
 function simulateGesture(type) {
   switch (type) {
     case "hand":
@@ -170,12 +160,9 @@ function toggleDetection() {
   isDetecting.value = !isDetecting.value
 }
 
-onMounted(() => {
-  loadVoices()
-  if (speechSynthesis.onvoiceschanged !== undefined) {
-    speechSynthesis.onvoiceschanged = loadVoices
-  }
-  runGestureDetection()
+onMounted(async () => {
+  await setupCamera()
+  if (hasCamera.value) runDetection()
 })
 </script>
 
@@ -217,15 +204,11 @@ video {
   max-width: 420px;
 }
 
-/* Voice */
-.voice-box {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  background: #f5f5f5;
-  padding: 0.5rem 1rem;
-  border-radius: 10px;
-  flex-wrap: wrap;
+.fade-enter-active, .fade-leave-active {
+  transition: opacity 0.5s;
+}
+.fade-enter-from, .fade-leave-to {
+  opacity: 0;
 }
 
 /* Kontrol */
@@ -242,6 +225,7 @@ video {
   background: #28a745;
   color: white;
   cursor: pointer;
+  transition: background 0.3s;
 }
 .controls button:hover {
   background: #218838;
