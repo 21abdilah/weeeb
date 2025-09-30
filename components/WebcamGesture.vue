@@ -1,167 +1,297 @@
 <template>
-  <div id="app" class="app-wrapper">
-    <header class="app-header">
-      <h1>📸  Kamera </h1>
-      <p class="subtitle">Tes kamera di HP & Laptop (mirip WebcamToy)</p>
-    </header>
+  <div class="wrap">
+    <h2>🔍 Camera Debug & Fix</h2>
 
-    <!-- Kamera -->
-    <main>
-      <div v-if="loading" class="loading">⏳ Menghubungkan kamera...</div>
+    <div class="controls-row">
+      <button @click="start" :disabled="starting">▶ Start Kamera</button>
+      <button @click="stop" :disabled="!streamActive">■ Stop</button>
+      <button @click="refresh" :disabled="starting">🔄 Refresh</button>
+    </div>
 
-      <div v-if="cameraError" class="error">{{ cameraError }}</div>
+    <div class="form-row">
+      <label>📷 Pilih Kamera:</label>
+      <select v-model="selectedDeviceId" @change="onDeviceChange">
+        <option value="">(Auto / default)</option>
+        <option
+          v-for="d in videoDevices"
+          :key="d.deviceId"
+          :value="d.deviceId"
+        >
+          {{ d.label || "Camera " + d.deviceId }}
+        </option>
+      </select>
+    </div>
 
-      <div v-if="hasCamera" class="video-container">
-        <video ref="video" autoplay playsinline muted></video>
-      </div>
+    <div class="status">
+      <div><strong>Permission:</strong> {{ permissionState }}</div>
+      <div><strong>Stream active:</strong> {{ streamActive ? "yes" : "no" }}</div>
+      <div v-if="lastError"><strong>Last error:</strong> {{ lastErrorMessage }}</div>
+    </div>
 
-      <div class="controls">
-        <button @click="setupCamera">🔄 Refresh Kamera</button>
-      </div>
-    </main>
+    <div class="video-area">
+      <video
+        ref="video"
+        autoplay
+        playsinline
+        muted
+        class="video"
+      ></video>
+      <div v-if="userMessage" class="overlay">{{ userMessage }}</div>
+    </div>
 
-    <footer class="app-footer">
-      <p>Made with ❤️ by Hilal Abdilah</p>
-    </footer>
+    <details class="debug">
+      <summary>🧾 Debug info</summary>
+      <pre>{{ debugText }}</pre>
+    </details>
+
+    <div class="tips">
+      <h4>Tips cepat</h4>
+      <ul>
+        <li>Pastikan halaman diakses lewat <strong>HTTPS</strong> (Vercel sudah OK).</li>
+        <li>Tutup aplikasi lain yang memakai kamera (Zoom, WhatsApp, dsb.).</li>
+        <li>Jika di HP: buka Settings → App → Browser → Permissions → Camera → Allow untuk situs ini.</li>
+        <li>Untuk iOS Safari: tekan <em>Start Kamera</em> (user gesture diperlukan).</li>
+      </ul>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue"
+import { ref, reactive, computed, onMounted, onBeforeUnmount } from "vue"
 
 const video = ref(null)
-const loading = ref(true)
-const hasCamera = ref(false)
-const cameraError = ref("")
+const selectedDeviceId = ref("")
+const videoDevices = ref([])
+const permissionState = ref("unknown")
+const streamActive = ref(false)
+const lastError = ref(null)
+const starting = ref(false)
+const userMessage = ref("")
 
-async function setupCamera() {
-  loading.value = true
-  hasCamera.value = false
-  cameraError.value = ""
+let currentStream = null
 
-  try {
-    const constraintsList = [
-      { video: { facingMode: "user" }, audio: false },        // kamera depan
-      { video: { facingMode: "environment" }, audio: false }, // kamera belakang
-      { video: true }                                         // fallback generic
-    ]
+const debug = reactive({
+  devices: [],
+  logs: []
+})
 
-    let stream = null
-    for (const c of constraintsList) {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia(c)
-        if (stream) break
-      } catch (e) {
-        console.warn("Gagal dengan config:", c, e)
-      }
-    }
+const debugText = computed(() => {
+  return JSON.stringify(
+    {
+      permissionState: permissionState.value,
+      selectedDeviceId: selectedDeviceId.value,
+      streamActive: streamActive.value,
+      devices: debug.devices,
+      logs: debug.logs.slice(-30)
+    },
+    null,
+    2
+  )
+})
 
-    if (!stream) throw new Error("Tidak ada kamera yang bisa diakses")
+const lastErrorMessage = computed(() => {
+  if (!lastError.value) return ""
+  const e = lastError.value
+  return e.name ? `${e.name}: ${e.message || "(no message)"}` : String(e)
+})
 
-    video.value.srcObject = stream
+function logDebug(...args) {
+  const txt = args.map(a => (typeof a === "string" ? a : JSON.stringify(a))).join(" ")
+  debug.logs.push(`[${new Date().toISOString()}] ${txt}`)
+  console.debug(...args)
+}
 
-    // paksa play (untuk mobile Safari/Chrome)
-    await video.value.play().catch(err => {
-      console.error("Video gagal play:", err)
-    })
+// Stop and cleanup any existing stream
+function stopStream() {
+  if (!currentStream) return
+  const tracks = currentStream.getTracks()
+  tracks.forEach(t => {
+    try { t.stop() } catch (e) { /* ignore */ }
+  })
+  currentStream = null
+  streamActive.value = false
+  if (video.value) {
+    try {
+      video.value.srcObject = null
+    } catch (e) {}
+  }
+  logDebug("Stream stopped")
+}
 
-    hasCamera.value = true
-  } catch (err) {
-    console.error("Kamera error:", err)
-    cameraError.value =
-      "❌ Kamera gagal diakses. Pastikan izin kamera sudah diberikan di browser/HP."
-    hasCamera.value = false
-  } finally {
-    loading.value = false
+// Map common errors to friendly messages + store lastError
+function handleGetUserMediaError(e) {
+  lastError.value = e
+  logDebug("getUserMedia error:", e)
+  if (e.name === "NotAllowedError" || e.name === "PermissionDeniedError") {
+    userMessage.value = "❌ Izin kamera ditolak. Periksa pengaturan situs di browser."
+    permissionState.value = "denied"
+  } else if (e.name === "NotFoundError" || e.name === "DevicesNotFoundError") {
+    userMessage.value = "📭 Tidak menemukan kamera di perangkat."
+    permissionState.value = "not-found"
+  } else if (e.name === "NotReadableError" || e.name === "TrackStartError") {
+    userMessage.value = "🔒 Kamera sedang dipakai aplikasi lain atau tidak dapat dibuka."
+    permissionState.value = "in-use"
+  } else if (e.name === "OverconstrainedError" || e.name === "ConstraintNotSatisfiedError") {
+    userMessage.value = "⚠️ Konfigurasi kamera tidak tersedia (coba pilih device lain)."
+    permissionState.value = "constraint"
+  } else {
+    userMessage.value = `⚠️ Error: ${e.name || e}`
   }
 }
 
-onMounted(() => {
-  setupCamera()
+// Enumerate devices and fill videoDevices
+async function enumerateVideoDevices() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices()
+    debug.devices = devices
+    videoDevices.value = devices.filter(d => d.kind === "videoinput")
+    logDebug("Devices enumerated:", videoDevices.value.map(d => d.label || d.deviceId))
+    return videoDevices.value
+  } catch (e) {
+    logDebug("enumerateDevices failed", e)
+    // enumerateDevices may return limited info until permission granted
+    videoDevices.value = []
+    return []
+  }
+}
+
+// Check permission using Permissions API (best effort)
+async function checkPermission() {
+  permissionState.value = "unknown"
+  userMessage.value = ""
+  try {
+    if (navigator.permissions && navigator.permissions.query) {
+      // try 'camera' first (not supported everywhere), fallback to 'microphone' or use getUserMedia check
+      try {
+        const p = await navigator.permissions.query({ name: "camera" })
+        permissionState.value = p.state
+        p.onchange = () => { permissionState.value = p.state }
+        logDebug("Permissions API (camera) state:", p.state)
+        return p.state
+      } catch (err) {
+        // some browsers throw; fallback: check via enumerateDevices (labels only visible when allowed)
+        logDebug("Permissions API camera not supported:", err)
+      }
+    }
+    // fallback probing: enumerateDevices — if labels are empty, likely permission not granted yet
+    const devices = await navigator.mediaDevices.enumerateDevices()
+    const anyLabels = devices.some(d => !!d.label)
+    permissionState.value = anyLabels ? "granted" : "prompt/unknown"
+    logDebug("Permissions fallback, anyLabels:", anyLabels)
+    return permissionState.value
+  } catch (e) {
+    logDebug("permission check failed:", e)
+    permissionState.value = "unknown"
+    return "unknown"
+  }
+}
+
+// Start camera with selected device or fallback
+async function start() {
+  starting.value = true
+  lastError.value = null
+  userMessage.value = "⏳ Meminta akses kamera..."
+  try {
+    // stop existing
+    stopStream()
+
+    // Ensure we know permission & devices first
+    await checkPermission()
+    await enumerateVideoDevices()
+
+    // Build constraints
+    const constraints = {
+      video: {}
+    }
+    if (selectedDeviceId.value) {
+      constraints.video.deviceId = { exact: selectedDeviceId.value }
+    } else {
+      // let browser choose; still give facingMode hint
+      constraints.video.facingMode = { ideal: "user" }
+    }
+
+    logDebug("Requesting getUserMedia with", constraints)
+    try {
+      const s = await navigator.mediaDevices.getUserMedia(constraints)
+      currentStream = s
+      if (video.value) {
+        video.value.srcObject = s
+        // Try to force play; mobile browsers often require user interaction (we have Start button)
+        await video.value.play().catch(err => {
+          logDebug("video.play() catch:", err)
+        })
+      }
+      streamActive.value = true
+      userMessage.value = ""
+      lastError.value = null
+      logDebug("Stream started OK")
+      // Re-enumerate to get labels (some browsers reveal labels only after grant)
+      await enumerateVideoDevices()
+    } catch (e) {
+      handleGetUserMediaError(e)
+      throw e // rethrow to outer catch for logging
+    }
+  } catch (e) {
+    logDebug("start() failed:", e)
+  } finally {
+    starting.value = false
+  }
+}
+
+function stop() {
+  stopStream()
+  userMessage.value = "Kamera dihentikan."
+}
+
+async function refresh() {
+  userMessage.value = "🔄 Refreshing..."
+  stopStream()
+  await enumerateVideoDevices()
+  // small pause then start automatically
+  setTimeout(() => { start() }, 300)
+}
+
+function onDeviceChange() {
+  // When user picks a different device, restart stream
+  logDebug("Device changed to", selectedDeviceId.value)
+  start()
+}
+
+onMounted(async () => {
+  // initial checks (don't auto-start to respect mobile Safari/Chrome user gesture requirement)
+  await checkPermission()
+  await enumerateVideoDevices()
+  // show message instructing user to start
+  userMessage.value = "Tekan \"Start Kamera\" untuk memberikan izin / menampilkan preview."
+})
+
+onBeforeUnmount(() => {
+  stopStream()
 })
 </script>
 
 <style scoped>
-.app-wrapper {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-  background: #f9f9f9;
-  color: #333;
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-}
-
-.app-header {
-  text-align: center;
+.wrap {
+  max-width: 820px;
+  margin: 1rem auto;
   padding: 1rem;
-  background: #0077ff;
-  color: white;
-}
-.app-header h1 {
-  margin: 0;
-  font-size: 1.8rem;
-}
-.subtitle {
-  font-size: 0.9rem;
-  opacity: 0.85;
-}
-
-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 1rem;
-}
-
-.loading {
-  margin: 2rem 0;
-  font-size: 1.1rem;
-  color: #666;
-}
-.error {
-  margin: 1rem 0;
-  padding: 0.8rem 1rem;
-  background: #ffdddd;
-  color: #a10000;
-  border-radius: 8px;
-  font-weight: bold;
-}
-
-.video-container {
-  display: flex;
-  justify-content: center;
-  margin: 1rem 0;
-  width: 100%;
-}
-video {
-  width: 100%;
-  max-width: 480px;
-  border-radius: 12px;
-  background: black;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-.controls {
-  margin: 1rem 0;
-}
-.controls button {
-  padding: 0.6rem 1.2rem;
-  border: none;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  color: #111;
+  background: #fff;
   border-radius: 10px;
-  background: #0077ff;
-  color: white;
-  font-size: 1rem;
-  cursor: pointer;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.08);
 }
-.controls button:hover {
-  background: #005fcc;
-}
+.controls-row { display:flex; gap:8px; margin-bottom:10px; }
+.controls-row button { padding:8px 14px; border-radius:8px; border:none; background:#007bff; color:white; cursor:pointer; }
+.controls-row button:disabled { opacity:0.5; cursor:not-allowed; }
+.form-row { margin:10px 0; display:flex; gap:8px; align-items:center; }
+.form-row select { padding:6px 8px; border-radius:6px; }
 
-.app-footer {
-  text-align: center;
-  padding: 0.8rem;
-  font-size: 0.85rem;
-  background: #eee;
-}
+.status { margin:10px 0; font-size:0.95rem; color:#333; }
+.video-area { position:relative; margin-top:10px; display:flex; justify-content:center; }
+.video { width:100%; max-width:560px; border-radius:12px; background:#000; box-shadow:0 6px 18px rgba(0,0,0,0.12); }
+.overlay { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); color:#fff; background:rgba(0,0,0,0.55); padding:10px 14px; border-radius:8px; }
+.debug { margin-top:12px; font-size:0.85rem; background:#fafafa; padding:10px; border-radius:8px; }
+.tips { margin-top:12px; font-size:0.9rem; color:#333; }
+.tips ul { margin:6px 0 0 18px; }
 </style>
