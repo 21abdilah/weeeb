@@ -3,7 +3,8 @@
     <!-- Kotak Kamera -->
     <div class="camera-box">
       <h2 v-if="loading" class="loader">📷 Menyiapkan Kamera...</h2>
-      <video v-else ref="video" autoplay playsinline></video>
+      <video v-else ref="video" autoplay playsinline muted></video>
+      <p v-if="cameraError" class="error-text">{{ cameraError }}</p>
     </div>
 
     <!-- Info teks -->
@@ -48,6 +49,7 @@ const infoText = ref("")
 const loading = ref(true)
 const hasCamera = ref(true)
 const isDetecting = ref(true)
+const cameraError = ref("")
 
 const availableVoices = ref([])
 const selectedVoice = ref(null)
@@ -62,8 +64,8 @@ let isSpeaking = false
 // Load voices
 function loadVoices() {
   availableVoices.value = speechSynthesis.getVoices()
+  console.log("Voices tersedia:", availableVoices.value.map(v => v.name))
   selectedVoice.value =
-    availableVoices.value.find(v => v.name.toLowerCase().includes("indonesia")) ||
     availableVoices.value.find(v => v.lang.includes("id")) ||
     availableVoices.value[0] ||
     null
@@ -93,19 +95,23 @@ async function setupCamera() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     hasCamera.value = false
     loading.value = false
+    cameraError.value = "❌ Kamera tidak tersedia di perangkat ini."
     return
   }
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true })
-    video.value.srcObject = stream
-    await new Promise(resolve => {
-      video.value.onloadedmetadata = () => resolve(video.value)
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user" }, // kamera depan
+      audio: false
     })
+    video.value.srcObject = stream
+    await video.value.play() // paksa play
     loading.value = false
+    cameraError.value = ""
   } catch (err) {
     console.warn("Kamera tidak tersedia:", err)
     hasCamera.value = false
     loading.value = false
+    cameraError.value = "⚠️ Tidak bisa mengakses kamera. Pastikan izin sudah diberikan."
   }
 }
 
@@ -214,6 +220,13 @@ video {
   background: #000;
   object-fit: cover;
   max-height: 60vh;
+}
+
+.error-text {
+  color: #d9534f;
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
+  text-align: center;
 }
 
 /* Info teks */
