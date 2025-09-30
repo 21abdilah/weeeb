@@ -51,8 +51,8 @@
           </button>
 
           <template v-else>
-            <button @click="simulateGesture('hand')" class="py-2 px-3 bg-green-600 hover:bg-green-700 rounded-lg">👋 Angkat Tangan</button>
-            <button @click="simulateGesture('head')" class="py-2 px-3 bg-green-600 hover:bg-green-700 rounded-lg">🤓 Kepala Mengangguk</button>
+            <button @click="simulateGesture('handUp')" class="py-2 px-3 bg-green-600 hover:bg-green-700 rounded-lg">👋 Angkat Tangan</button>
+            <button @click="simulateGesture('nod')" class="py-2 px-3 bg-green-600 hover:bg-green-700 rounded-lg">🤓 Geleng Kepala</button>
             <button @click="simulateGesture('wave')" class="py-2 px-3 bg-green-600 hover:bg-green-700 rounded-lg">👏 Lambaikan Tangan</button>
           </template>
         </div>
@@ -77,7 +77,11 @@ const facingMode = ref('user')
 let detector = null
 let stream = null
 let audioEnabled = ref(false)
-const gesturePlayed = ref({ hand:false, head:false, wave:false })
+
+// Gesture smoothing
+const lastKeypoints = []
+const gestureState = ref({ handUp:false, wave:false, nod:false })
+let prevRightWristX = 0
 
 const myInfo = 'Halo semuanya! Perkenalkan, saya Hilal Abdilah, mahasiswa baru Teknik Informatika. Senang bertemu dengan kalian semua!'
 
@@ -155,24 +159,62 @@ async function initTF(){
   catch{ await tf.setBackend('cpu'); await tf.ready() } }
 }
 
+function smoothKeypoints(keypoints){
+  // moving average 3 frame
+  lastKeypoints.push(keypoints)
+  if(lastKeypoints.length>3) lastKeypoints.shift()
+  const smoothed = keypoints.map((p,i)=>{
+    let x=0,y=0,count=0
+    for(const frame of lastKeypoints){
+      if(frame[i]){
+        x+=frame[i].x; y+=frame[i].y; count++
+      }
+    }
+    return {x:x/count, y:y/count, name:p.name}
+  })
+  return smoothed
+}
+
 async function runDetection(){
   if(!detector || !cameraOn.value) return
   try{
     const poses = await detector.estimatePoses(video.value)
     if(poses.length>0){
-      const leftWrist = poses[0].keypoints.find(p=>p.name==='left_wrist')
-      const rightWrist = poses[0].keypoints.find(p=>p.name==='right_wrist')
-      const nose = poses[0].keypoints.find(p=>p.name==='nose')
+      const keypoints = smoothKeypoints(poses[0].keypoints)
+      const leftWrist = keypoints.find(p=>p.name==='left_wrist')
+      const rightWrist = keypoints.find(p=>p.name==='right_wrist')
+      const leftShoulder = keypoints.find(p=>p.name==='left_shoulder')
+      const rightShoulder = keypoints.find(p=>p.name==='right_shoulder')
+      const nose = keypoints.find(p=>p.name==='nose')
+      const leftEye = keypoints.find(p=>p.name==='left_eye')
+      const rightEye = keypoints.find(p=>p.name==='right_eye')
 
-      if(leftWrist && rightWrist && nose){
-        if(!gesturePlayed.value.hand && (leftWrist.y<nose.y || rightWrist.y<nose.y)){
+      // Angkat tangan
+      if(leftWrist && rightWrist && leftShoulder && rightShoulder){
+        if(!gestureState.value.handUp && (leftWrist.y < leftShoulder.y || rightWrist.y < rightShoulder.y)){
+          gestureState.value.handUp=true
           speak(myInfo)
-          gesturePlayed.value.hand=true
           showConfetti()
         }
-        if(!gesturePlayed.value.wave && Math.abs(leftWrist.x-rightWrist.x)>100){
+      }
+
+      // Wave tangan
+      if(rightWrist){
+        const deltaX = rightWrist.x - prevRightWristX
+        if(!gestureState.value.wave && Math.abs(deltaX)>50){
+          gestureState.value.wave=true
           speak('Himatika! Kita pasti bisa!')
-          gesturePlayed.value.wave=true
+          showConfetti()
+        }
+        prevRightWristX = rightWrist.x
+      }
+
+      // Geleng kepala (horizontal head tilt)
+      if(nose && leftEye && rightEye){
+        const angle = Math.atan2(rightEye.y-leftEye.y, rightEye.x-leftEye.x) * 180/Math.PI
+        if(!gestureState.value.nod && Math.abs(angle)>15){
+          gestureState.value.nod=true
+          speak('Terima kasih, sampai jumpa!')
           showConfetti()
         }
       }
@@ -182,17 +224,17 @@ async function runDetection(){
 }
 
 function simulateGesture(type){
-  if(gesturePlayed.value[type]) return
+  if(gestureState.value[type]) return
   switch(type){
-    case 'hand': speak(myInfo); gesturePlayed.value.hand=true; break
-    case 'head': speak('Terima kasih, sampai jumpa!'); gesturePlayed.value.head=true; break
-    case 'wave': speak('Himatika! Kita pasti bisa!'); gesturePlayed.value.wave=true; break
+    case 'handUp': speak(myInfo); gestureState.value.handUp=true; break
+    case 'nod': speak('Terima kasih, sampai jumpa!'); gestureState.value.nod=true; break
+    case 'wave': speak('Himatika! Kita pasti bisa!'); gestureState.value.wave=true; break
   }
   showConfetti()
 }
 
 onMounted(()=>{
-  setTimeout(loadVoices, 100)
+  setTimeout(loadVoices,100)
   if(speechSynthesis.onvoiceschanged!==undefined) speechSynthesis.onvoiceschanged=loadVoices
   setupCamera()
 })
