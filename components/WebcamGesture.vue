@@ -1,36 +1,31 @@
 <template>
   <div class="page-wrapper">
-    <!-- Kamera -->
+    <!-- Kotak Kamera -->
     <div class="camera-box">
       <h2 v-if="loading" class="loader">📷 Menyiapkan Kamera...</h2>
-      <video v-else ref="video" autoplay playsinline muted></video>
+      <video v-else ref="video" autoplay playsinline></video>
     </div>
 
     <!-- Info teks -->
     <div class="info-text" v-if="showInfo" v-html="infoText"></div>
 
-    <!-- Pilih suara -->
+    <!-- Pengaturan suara -->
     <div class="voice-box" v-if="availableVoices.length">
       <label for="voice">🔊 Pilih Suara:</label>
       <select id="voice" v-model="selectedVoice">
-        <option
-          v-for="v in availableVoices"
-          :key="v.name"
-          :value="v"
-        >
-          {{ v.name }}
-        </option>
+        <option v-for="v in availableVoices" :key="v.name" :value="v">{{ v.name }}</option>
       </select>
       <button @click="speak('Tes suara bahasa Indonesia')">▶ Tes</button>
     </div>
 
-    <!-- Kontrol -->
+    <!-- Tombol Kontrol -->
     <div class="controls">
       <template v-if="!hasCamera">
         <button @click="simulateGesture('hand')">👋 Angkat Tangan</button>
-        <button @click="simulateGesture('head')">🤓 Angguk Kepala</button>
+        <button @click="simulateGesture('head')">🤓 Kepala Mengangguk</button>
         <button @click="simulateGesture('wave')">👏 Lambaikan Tangan</button>
       </template>
+
       <template v-else>
         <button @click="toggleDetection">
           {{ isDetecting ? "⏸ Pause" : "▶ Resume" }}
@@ -45,7 +40,6 @@ import { ref, onMounted } from "vue"
 import * as tf from "@tensorflow/tfjs"
 import * as poseDetection from "@tensorflow-models/pose-detection"
 
-// refs
 const video = ref(null)
 const showInfo = ref(false)
 const infoText = ref("")
@@ -63,7 +57,7 @@ const myInfo = `
 
 let isSpeaking = false
 
-// === Voice ===
+// Load voices
 function loadVoices() {
   availableVoices.value = speechSynthesis.getVoices()
   selectedVoice.value =
@@ -84,7 +78,7 @@ function speak(text) {
   }
   const utter = new SpeechSynthesisUtterance(text)
   utter.lang = "id-ID"
-  if (selectedVoice.value) utter.voice = selectedVoice.value
+  utter.voice = selectedVoice.value
   utter.rate = 0.95
   utter.pitch = 1.05
   utter.volume = 1
@@ -93,25 +87,26 @@ function speak(text) {
   speechSynthesis.speak(utter)
 }
 
-// === Kamera ===
 async function setupCamera() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    hasCamera.value = false
+    loading.value = false
+    return
+  }
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "user" },
-    })
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true })
     video.value.srcObject = stream
     await new Promise(resolve => {
-      video.value.onloadedmetadata = () => resolve()
+      video.value.onloadedmetadata = () => resolve(video.value)
     })
     loading.value = false
   } catch (err) {
-    console.warn("Kamera gagal diakses:", err)
+    console.warn("Kamera tidak tersedia:", err)
     hasCamera.value = false
     loading.value = false
   }
 }
 
-// === Backend TensorFlow ===
 async function setupBackend() {
   const backends = ["webgl", "wasm", "cpu"]
   for (const b of backends) {
@@ -126,16 +121,11 @@ async function setupBackend() {
   }
 }
 
-// === Deteksi Gesture ===
 async function runGestureDetection() {
   await setupCamera()
   if (!hasCamera.value) return
   await setupBackend()
-
-  const detector = await poseDetection.createDetector(
-    poseDetection.SupportedModels.MoveNet,
-    { modelType: "SinglePose.Lightning" }
-  )
+  const detector = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet)
 
   async function detect() {
     if (!isDetecting.value) {
@@ -155,12 +145,11 @@ async function runGestureDetection() {
         speak("Halo semuanya! Perkenalkan, saya Hilal Abdilah, mahasiswa baru Teknik Informatika.")
       }
     }
-    requestAnimationFrame(detect)
+    setTimeout(() => requestAnimationFrame(detect), 66)
   }
   detect()
 }
 
-// === Simulasi (tanpa kamera) ===
 function simulateGesture(type) {
   switch (type) {
     case "hand":
@@ -177,7 +166,6 @@ function simulateGesture(type) {
   }
 }
 
-// === Kontrol ===
 function toggleDetection() {
   isDetecting.value = !isDetecting.value
 }
@@ -204,7 +192,7 @@ onMounted(() => {
 .camera-box {
   position: relative;
   width: 100%;
-  max-width: 480px;
+  max-width: 420px;
   background: #fff;
   border-radius: 16px;
   padding: 0.5rem;
@@ -226,7 +214,7 @@ video {
   border-radius: 8px;
   font-size: 0.95rem;
   text-align: center;
-  max-width: 480px;
+  max-width: 420px;
 }
 
 /* Voice */
