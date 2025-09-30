@@ -131,7 +131,7 @@ async function setupCamera() {
       video:{ facingMode:facingMode.value } 
     })
     video.value.srcObject = stream
-    video.value.style.transform = facingMode.value==='user' ? 'scaleX(1)' : 'scaleX(1)' // non-mirror
+    video.value.style.transform = 'scaleX(1)' // non-mirror
     cameraAvailable.value=true
   }catch{ cameraAvailable.value=false }
 }
