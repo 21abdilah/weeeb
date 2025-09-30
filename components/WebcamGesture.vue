@@ -1,8 +1,8 @@
 <template>
   <div class="min-h-screen flex flex-col items-center justify-center bg-gray-900 text-white p-4">
-    <div class="w-full max-w-6xl grid md:grid-cols-3 gap-4">
+    <div class="w-full max-w-4xl grid md:grid-cols-3 gap-4">
 
-      <!-- Kotak Kamera -->
+      <!-- Kamera -->
       <div class="md:col-span-2 flex justify-center">
         <div class="relative w-full max-w-xl aspect-video bg-black rounded-xl shadow-lg overflow-hidden">
           <video ref="video" autoplay playsinline muted class="w-full h-full object-cover"></video>
@@ -96,7 +96,7 @@ function enableAudio(){
 }
 
 function speak(text){
-  if(!audioEnabled.value) return
+  if(!audioEnabled.value || !('speechSynthesis' in window)) return
   window.speechSynthesis.cancel()
   const utter = new SpeechSynthesisUtterance(text)
   utter.lang = selectedLang.value
@@ -110,7 +110,7 @@ function speak(text){
 }
 
 function showConfetti(){
-  for(let i=0;i<25;i++){
+  for(let i=0;i<15;i++){
     const c=document.createElement('div')
     c.classList.add('confetti')
     c.style.left = Math.random()*window.innerWidth+'px'
@@ -128,10 +128,10 @@ async function setupCamera() {
   try{
     if(stream) stream.getTracks().forEach(t=>t.stop())
     stream = await navigator.mediaDevices.getUserMedia({ 
-      video:{ facingMode:facingMode.value } 
+      video:{ facingMode:facingMode.value, width:640, height:480 } 
     })
     video.value.srcObject = stream
-    video.value.style.transform = 'scaleX(1)' // non-mirror
+    video.value.style.transform = 'scaleX(1)'
     cameraAvailable.value=true
   }catch{ cameraAvailable.value=false }
 }
@@ -170,7 +170,7 @@ async function runDetection(){
           gesturePlayed.value.hand=true
           showConfetti()
         }
-        if(!gesturePlayed.value.wave && Math.abs(leftWrist.x-rightWrist.x)>150){
+        if(!gesturePlayed.value.wave && Math.abs(leftWrist.x-rightWrist.x)>100){
           speak('Himatika! Kita pasti bisa!')
           gesturePlayed.value.wave=true
           showConfetti()
@@ -192,7 +192,7 @@ function simulateGesture(type){
 }
 
 onMounted(()=>{
-  loadVoices()
+  setTimeout(loadVoices, 100)
   if(speechSynthesis.onvoiceschanged!==undefined) speechSynthesis.onvoiceschanged=loadVoices
   setupCamera()
 })
@@ -200,8 +200,8 @@ onMounted(()=>{
 
 <style scoped>
 video { border-radius:1rem; width:100%; height:100%; object-fit:cover; }
-.confetti { position:fixed; width:8px; height:8px; animation:fall 2s linear forwards; }
-@keyframes fall { to{transform:translateY(100vh) rotate(720deg);opacity:0;} }
+.confetti { position:fixed; width:8px; height:8px; border-radius:50%; animation:fall 2s linear forwards; pointer-events:none; }
+@keyframes fall { to{ transform:translateY(100vh) rotate(720deg); opacity:0; } }
 .fade-enter-active,.fade-leave-active{transition:opacity 0.5s;}
 .fade-enter-from,.fade-leave-to{opacity:0;}
 </style>
