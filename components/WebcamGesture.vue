@@ -1,15 +1,11 @@
 <template>
-  <div class="min-h-screen flex flex-col items-center justify-center bg-gray-900 text-white p-4">
-    <!-- Grid responsif -->
-    <div class="w-full max-w-6xl grid md:grid-cols-3 gap-4">
+  <div class="min-h-screen flex flex-col items-center justify-center bg-gray-900 text-white p-4 gap-4">
+    <div class="w-full max-w-5xl grid md:grid-cols-3 gap-4">
 
       <!-- Kotak Kamera -->
       <div class="md:col-span-2 flex justify-center">
-        <div class="relative w-full max-w-xl aspect-video bg-black rounded-xl shadow-lg overflow-hidden">
-          <!-- Video -->
-          <video ref="video" autoplay playsinline muted class="w-full h-full object-cover"></video>
-
-          <!-- Overlay teks ucapan -->
+        <div class="relative w-full max-w-lg aspect-video bg-black rounded-xl shadow-lg overflow-hidden">
+          <video ref="video" autoplay playsinline muted class="w-full h-full object-cover rounded-xl"></video>
           <transition name="fade">
             <div v-if="spokenText"
                  class="absolute bottom-2 left-1/2 transform -translate-x-1/2 bg-black/70 px-4 py-2 rounded-lg text-sm text-center">
@@ -23,6 +19,15 @@
       <div class="bg-gray-800 p-4 rounded-xl shadow-lg flex flex-col justify-between">
         <div>
           <h2 class="text-lg font-bold mb-4">⚙️ Pengaturan</h2>
+
+          <!-- Pilih Kamera -->
+          <label class="block mb-3">
+            Kamera:
+            <select v-model="facingMode" @change="restartCamera" class="mt-1 w-full p-2 rounded bg-gray-700">
+              <option value="user">Depan</option>
+              <option value="environment">Belakang</option>
+            </select>
+          </label>
 
           <!-- Bahasa -->
           <label class="block mb-3">
@@ -72,20 +77,18 @@ const selectedVoice = ref('')
 const voices = ref([])
 const cameraOn = ref(false)
 const cameraAvailable = ref(true)
+const facingMode = ref('user') // default depan
 
 let detector = null
 let stream = null
-
 const myInfo = 'Halo semuanya! Perkenalkan, saya Hilal Abdilah, mahasiswa baru Teknik Informatika. Senang bertemu dengan kalian semua!'
 
-// ✅ Load suara
 function loadVoices() {
   voices.value = speechSynthesis.getVoices()
   selectedVoice.value = voices.value.find(v => v.lang.includes('id'))?.name || voices.value[0]?.name || ''
 }
 
 function speak(text) {
-  if (!window.speechSynthesis) return
   const utter = new SpeechSynthesisUtterance(text)
   utter.lang = selectedLang.value
   const voice = voices.value.find(v => v.name === selectedVoice.value)
@@ -94,9 +97,9 @@ function speak(text) {
   utter.pitch = 1.05
   window.speechSynthesis.speak(utter)
   spokenText.value = text
+  setTimeout(() => spokenText.value = '', text.length * 80) // teks mengikuti suara
 }
 
-// ✅ Confetti sederhana
 function showConfetti() {
   for (let i = 0; i < 25; i++) {
     const c = document.createElement('div')
@@ -115,7 +118,8 @@ async function setupCamera() {
     return
   }
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: true })
+    if (stream) stream.getTracks().forEach(t=>t.stop())
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facingMode.value } })
     video.value.srcObject = stream
     cameraAvailable.value = true
   } catch {
@@ -123,10 +127,18 @@ async function setupCamera() {
   }
 }
 
-// ✅ Toggle kamera
+async function restartCamera() {
+  if(cameraOn.value){
+    await setupCamera()
+    await initTF()
+    detector = await posedetection.createDetector(posedetection.SupportedModels.MoveNet)
+    runDetection()
+  }
+}
+
 async function toggleCamera() {
   if (cameraOn.value) {
-    stream.getTracks().forEach(t=>t.stop())
+    if(stream) stream.getTracks().forEach(t=>t.stop())
     cameraOn.value = false
     return
   }
@@ -137,14 +149,12 @@ async function toggleCamera() {
   runDetection()
 }
 
-// ✅ TensorFlow backend fallback
 async function initTF() {
   try { await tf.setBackend('webgpu'); await tf.ready() } 
   catch { try { await tf.setBackend('webgl'); await tf.ready() } 
   catch { await tf.setBackend('cpu'); await tf.ready() } }
 }
 
-// ✅ Loop deteksi pose
 async function runDetection() {
   if (!detector || !cameraOn.value) return
   try {
@@ -162,7 +172,6 @@ async function runDetection() {
   requestAnimationFrame(runDetection)
 }
 
-// ✅ Simulasi gerakan tanpa kamera
 function simulateGesture(type){
   switch(type){
     case 'hand': speak(myInfo); break
@@ -172,7 +181,6 @@ function simulateGesture(type){
   showConfetti()
 }
 
-// ✅ Mounted
 onMounted(()=>{
   loadVoices()
   if(speechSynthesis.onvoiceschanged!==undefined){
@@ -183,10 +191,9 @@ onMounted(()=>{
 </script>
 
 <style scoped>
-.gesture-container { display:flex; flex-direction:column; gap:1rem; }
 video { border-radius:1rem; width:100%; height:100%; object-fit:cover; }
 .confetti { position:fixed; width:8px; height:8px; animation:fall 2s linear forwards; }
 @keyframes fall { to { transform:translateY(100vh) rotate(720deg); opacity:0; } }
 .fade-enter-active, .fade-leave-active { transition: opacity 0.5s; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
+.fade-enter-from, .fade-leave-to { opacity:0; }
 </style>
