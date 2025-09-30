@@ -77,8 +77,6 @@ const facingMode = ref('user')
 let detector = null
 let stream = null
 let audioEnabled = ref(false)
-
-// Past gestures tracker
 const gesturePlayed = ref({ hand:false, head:false, wave:false })
 
 const myInfo = 'Halo semuanya! Perkenalkan, saya Hilal Abdilah, mahasiswa baru Teknik Informatika. Senang bertemu dengan kalian semua!'
@@ -129,8 +127,11 @@ async function setupCamera() {
   }
   try{
     if(stream) stream.getTracks().forEach(t=>t.stop())
-    stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:facingMode.value } })
+    stream = await navigator.mediaDevices.getUserMedia({ 
+      video:{ facingMode:facingMode.value } 
+    })
     video.value.srcObject = stream
+    video.value.style.transform = facingMode.value==='user' ? 'scaleX(1)' : 'scaleX(1)' // non-mirror
     cameraAvailable.value=true
   }catch{ cameraAvailable.value=false }
 }
@@ -164,13 +165,11 @@ async function runDetection(){
       const nose = poses[0].keypoints.find(p=>p.name==='nose')
 
       if(leftWrist && rightWrist && nose){
-        // Hand gesture
         if(!gesturePlayed.value.hand && (leftWrist.y<nose.y || rightWrist.y<nose.y)){
           speak(myInfo)
           gesturePlayed.value.hand=true
           showConfetti()
         }
-        // Wave gesture (x difference)
         if(!gesturePlayed.value.wave && Math.abs(leftWrist.x-rightWrist.x)>150){
           speak('Himatika! Kita pasti bisa!')
           gesturePlayed.value.wave=true
