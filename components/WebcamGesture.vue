@@ -1,12 +1,18 @@
 <template>
   <div class="gesture-container">
-    <h2 v-if="loading" class="loader">📷 Menyiapkan Kamera...</h2>
-    <video v-else ref="video" autoplay playsinline></video>
+    <!-- Judul -->
+    <h2 class="title">🤖 Demo Deteksi Gerakan Tubuh + Suara</h2>
 
-    <!-- Teks info pojok kiri atas -->
-    <div id="info" :class="{ show: showInfo }" v-html="infoText"></div>
+    <!-- Kotak kamera -->
+    <div class="camera-box">
+      <h3 v-if="loading" class="loader">📷 Menyiapkan Kamera...</h3>
+      <video v-else ref="video" autoplay playsinline muted></video>
 
-    <!-- Pilih suara -->
+      <!-- Info text di atas kotak -->
+      <div id="info" :class="{ show: showInfo }" v-html="infoText"></div>
+    </div>
+
+    <!-- Pengaturan suara -->
     <div class="voice-selector" v-if="availableVoices.length">
       <label for="voice">🔊 Pilih Suara:</label>
       <select id="voice" v-model="selectedVoice">
@@ -15,14 +21,13 @@
       <button class="test-btn" @click="speak('Tes suara bahasa Indonesia')">▶ Tes</button>
     </div>
 
-    <!-- Tombol simulasi -->
+    <!-- Tombol kontrol -->
     <div class="controls">
       <template v-if="!hasCamera">
         <button @click="simulateGesture('hand')">👋 Angkat Tangan</button>
         <button @click="simulateGesture('head')">🤓 Kepala Mengangguk</button>
         <button @click="simulateGesture('wave')">👏 Lambaikan Tangan</button>
       </template>
-
       <template v-else>
         <button @click="toggleDetection">
           {{ isDetecting ? '⏸ Pause' : '▶ Resume' }}
@@ -48,8 +53,9 @@ const availableVoices = ref([])
 const selectedVoice = ref(null)
 
 const myInfo = `
-  <strong>Hallo world Perkenalkan Saya Hilal Abdilah</strong><br>
-  Mahasiswa baru Teknik Informatika<br>
+  <strong>Halo semuanya!</strong><br>
+  Saya <b>Hilal Abdilah</b><br>
+  Mahasiswa Baru Teknik Informatika 🎓
 `
 
 let isSpeaking = false
@@ -70,14 +76,12 @@ function speak(text) {
     }
     return
   }
-
   const utter = new SpeechSynthesisUtterance(text)
   utter.lang = 'id-ID'
   utter.voice = selectedVoice.value
   utter.rate = 0.9
   utter.pitch = 1.05
   utter.volume = 1
-
   isSpeaking = true
   utter.onend = () => { isSpeaking = false }
   speechSynthesis.speak(utter)
@@ -101,7 +105,7 @@ async function setupCamera() {
     return
   }
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true })
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
     video.value.srcObject = stream
     await new Promise(resolve => { video.value.onloadedmetadata = () => resolve(video.value) })
     loading.value = false
@@ -116,7 +120,7 @@ async function runGestureDetection() {
   await setupCamera()
   if (!hasCamera.value) return
 
-  await tf.setBackend('cpu')
+  await tf.setBackend('webgl')
   await tf.ready()
 
   const detector = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet)
@@ -133,27 +137,15 @@ async function runGestureDetection() {
       const leftWrist = keypoints.find(p => p.name === 'left_wrist')
       const rightWrist = keypoints.find(p => p.name === 'right_wrist')
       const nose = keypoints.find(p => p.name === 'nose')
-      const leftEye = keypoints.find(p => p.name === 'left_eye')
-      const rightEye = keypoints.find(p => p.name === 'right_eye')
 
-      if ((leftWrist.y < nose.y || rightWrist.y < nose.y) && !showInfo.value) {
+      if ((leftWrist?.y < nose?.y || rightWrist?.y < nose?.y) && !showInfo.value) {
         infoText.value = myInfo
         showInfo.value = true
-        speak('Halo semuanya! Perkenalkan, saya Hilal Abdilah, mahasiswa baru Teknik Informatika. Senang bertemu dengan kalian semua!')
-        showConfetti()
-      }
-
-      if ((leftEye.y - rightEye.y) < -15) {
-        speak('Terima kasih, sampai jumpa!')
-        showConfetti()
-      }
-
-      if ((leftWrist.x - rightWrist.x) > 150) {
-        speak('Himatika! Kita pasti bisa!')
+        speak('Halo semuanya! Perkenalkan, saya Hilal Abdilah, mahasiswa baru Teknik Informatika.')
         showConfetti()
       }
     }
-    setTimeout(() => requestAnimationFrame(detect), 66)
+    setTimeout(() => requestAnimationFrame(detect), 100)
   }
   detect()
 }
@@ -163,7 +155,7 @@ function simulateGesture(type) {
     case 'hand':
       infoText.value = myInfo
       showInfo.value = true
-      speak('Halo semuanya! Perkenalkan, saya Hilal Abdilah, mahasiswa baru Teknik Informatika. Senang bertemu dengan kalian semua!')
+      speak('Halo semuanya! Perkenalkan, saya Hilal Abdilah, mahasiswa baru Teknik Informatika.')
       break
     case 'head':
       speak('Terima kasih, sampai jumpa!')
@@ -193,31 +185,43 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1rem;
   padding: 1rem;
+  gap: 1rem;
+}
+
+.title {
+  font-size: 1.4rem;
+  font-weight: bold;
+  text-align: center;
+}
+
+.camera-box {
   position: relative;
+  width: 90vw;
+  max-width: 500px;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+  background: #000;
 }
 
 video {
-  width: 85vw;
-  max-width: 950px;
-  border-radius: 20px;
-  box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.3);
+  width: 100%;
+  display: block;
 }
 
 #info {
   position: absolute;
   top: 10px;
   left: 10px;
-  background: rgba(0, 0, 0, 0.75);
-  color: white;
-  padding: 10px 15px;
-  border-radius: 12px;
-  max-width: 280px;
-  font-size: 1rem;
+  background: rgba(0,0,0,0.7);
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 0.95rem;
   opacity: 0;
   transform: translateY(-20px);
-  transition: all 0.4s ease-in-out;
+  transition: all 0.3s ease-in-out;
 }
 #info.show {
   opacity: 1;
@@ -231,24 +235,7 @@ video {
   background: #f5f5f5;
   padding: 0.5rem 1rem;
   border-radius: 10px;
-}
-
-.voice-selector select {
-  padding: 0.3rem 0.5rem;
-  border-radius: 6px;
-  border: 1px solid #ccc;
-}
-
-.test-btn {
-  background: #007bff;
-  color: white;
-  padding: 0.3rem 0.8rem;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-}
-.test-btn:hover {
-  background: #0056b3;
+  flex-wrap: wrap;
 }
 
 .controls {
@@ -258,16 +245,16 @@ video {
   justify-content: center;
 }
 
-.controls button {
+.controls button, .test-btn {
   padding: 0.5rem 1rem;
-  border-radius: 10px;
+  border-radius: 8px;
   border: none;
   background: #28a745;
   color: white;
   cursor: pointer;
 }
-.controls button:hover {
-  background: #218838;
+.controls button:hover, .test-btn:hover {
+  background: #1e7e34;
 }
 
 .confetti {
@@ -276,7 +263,6 @@ video {
   height: 8px;
   animation: fall 2s linear forwards;
 }
-
 @keyframes fall {
   to {
     transform: translateY(100vh) rotate(720deg);
