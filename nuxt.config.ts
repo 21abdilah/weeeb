@@ -9,7 +9,7 @@ export default defineNuxtConfig({
     head: {
       title: 'Webcam Gesture',
       meta: [
-        { name: 'description', content: 'Demo interaktif gesture webcam dengan Nuxt3' }
+        { name: 'description', content: 'webcam dengan Nuxt3' }
       ]
     }
   }
