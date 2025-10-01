@@ -2,7 +2,7 @@
 export default defineNuxtConfig({
   ssr: false,
   css: [
-    '@/assets/main.css'
+    '@/assets/css/global.css'
   ],
   app: {
     head: {
