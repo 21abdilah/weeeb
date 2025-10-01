@@ -13,37 +13,54 @@
         </transition>
       </div>
 
-      <!-- Panel Kontrol -->
-      <div class="bg-gray-800 p-4 rounded-xl shadow-lg flex flex-col justify-between">
-        <div>
-          <h2 class="text-lg font-bold mb-4">⚙️ Pengaturan</h2>
-          <label class="block mb-3">
-            Kamera:
-            <select v-model="facingMode" @change="changeCamera" class="mt-1 w-full p-2 rounded bg-gray-700">
-              <option value="user">Depan</option>
-              <option value="environment">Belakang</option>
-            </select>
-          </label>
+      <!-- Panel Kontrol Interaktif -->
+      <div class="bg-gray-800 p-4 rounded-xl shadow-lg flex flex-col gap-4">
+        <h2 class="text-lg font-bold mb-2">⚙️ Pengaturan & Status</h2>
 
-          <label class="block mb-3">
-            Bahasa:
-            <select v-model="selectedLang" class="mt-1 w-full p-2 rounded bg-gray-700">
-              <option value="id-ID">Indonesia</option>
-              <option value="en-US">English</option>
-            </select>
-          </label>
-
-          <label class="block mb-3">
-            Suara:
-            <select v-model="selectedVoice" class="mt-1 w-full p-2 rounded bg-gray-700">
-              <option v-for="v in voices" :key="v.name" :value="v.name">{{ v.name }}</option>
-            </select>
-          </label>
-
-          <button @click="enableAudio" class="bg-blue-600 p-2 rounded mt-2 w-full hover:bg-blue-700">
-            ▶ Tes Suara
-          </button>
+        <!-- Kamera -->
+        <div class="flex justify-between items-center">
+          <span>📷 Kamera:</span>
+          <span :class="cameraOn ? 'text-green-400':'text-red-400'">{{ cameraOn ? 'ON':'OFF' }}</span>
         </div>
+
+        <!-- Audio -->
+        <div class="flex justify-between items-center">
+          <span>🔊 Audio:</span>
+          <span :class="audioEnabled ? 'text-green-400':'text-red-400'">{{ audioEnabled ? 'Aktif':'Nonaktif' }}</span>
+        </div>
+
+        <!-- Gesture Status -->
+        <div class="flex flex-col gap-1 mt-2">
+          <div class="flex justify-between">
+            <span>✋ Angkat Tangan</span>
+            <span :class="gestureState.handUp ? 'text-green-400':'text-gray-400'">{{ gestureState.handUp ? 'Aktif':'-' }}</span>
+          </div>
+          <div class="flex justify-between">
+            <span>👋 Wave</span>
+            <span :class="gestureState.wave ? 'text-green-400':'text-gray-400'">{{ gestureState.wave ? 'Aktif':'-' }}</span>
+          </div>
+          <div class="flex justify-between">
+            <span>🤓 Nodding</span>
+            <span :class="gestureState.nod ? 'text-green-400':'text-gray-400'">{{ gestureState.nod ? 'Aktif':'-' }}</span>
+          </div>
+        </div>
+
+        <!-- Bahasa & Suara -->
+        <label class="block mb-2">
+          Bahasa:
+          <select v-model="selectedLang" class="mt-1 w-full p-2 rounded bg-gray-700">
+            <option value="id-ID">Indonesia</option>
+            <option value="en-US">English</option>
+          </select>
+        </label>
+        <label class="block mb-2">
+          Suara:
+          <select v-model="selectedVoice" class="mt-1 w-full p-2 rounded bg-gray-700">
+            <option v-for="v in voices" :key="v.name" :value="v.name">{{ v.name }}</option>
+          </select>
+        </label>
+
+        <button @click="enableAudio" class="bg-blue-600 p-2 rounded mt-2 w-full hover:bg-blue-700">▶ Tes Suara</button>
       </div>
     </div>
   </div>
@@ -62,6 +79,7 @@ const selectedVoice = ref('')
 const voices = ref([])
 const facingMode = ref('user')
 const audioEnabled = ref(false)
+const cameraOn = ref(false)
 let stream=null
 let holistic=null
 
@@ -87,7 +105,12 @@ function loadVoices(){
   if(!voices.value.length) speechSynthesis.onvoiceschanged=()=>{voices.value=speechSynthesis.getVoices(); selectedVoice.value=voices.value[0]?.name||''}
   else selectedVoice.value=voices.value[0]?.name||''
 }
-function enableAudio(){ if(!audioEnabled.value){ audioEnabled.value=true; speak('Halo! Tes suara berhasil diaktifkan.') } }
+function enableAudio(){ 
+  if(!audioEnabled.value){ 
+    audioEnabled.value=true; 
+    speak('Halo! Tes suara berhasil diaktifkan.') 
+  } 
+}
 function speak(text){
   if(!audioEnabled.value || !('speechSynthesis' in window)) return
   window.speechSynthesis.cancel()
@@ -119,6 +142,7 @@ async function setupCamera(){
   if(stream) stream.getTracks().forEach(t=>t.stop())
   stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:facingMode.value,width:videoWidth,height:videoHeight}})
   video.value.srcObject=stream
+  cameraOn.value=true
 }
 
 /** Draw overlay interactive **/
@@ -163,7 +187,6 @@ function drawKeypoints(results){
   lastRightHand.value=rightHand
   lastPose.value=poseLandmarks
 
-  // Highlight gestures
   const handUpActive=gestureState.value.handUp
   const waveActive=gestureState.value.wave
 
