@@ -1,15 +1,15 @@
-import { defineNuxtConfig } from 'nuxt'
-
+// nuxt.config.ts
 export default defineNuxtConfig({
-  ssr: false, // Semua kode webcam client-only
+  ssr: false, // hanya client-side (butuh untuk camera & Mediapipe)
+  css: [
+    '@/assets/main.css'
+  ],
   build: {
-    transpile: ['@mediapipe/holistic']
+    transpile: []
   },
   vite: {
-    build: {
-      rollupOptions: {
-        external: []
-      }
+    optimizeDeps: {
+      exclude: ['@mediapipe/holistic']
     }
   }
 })
