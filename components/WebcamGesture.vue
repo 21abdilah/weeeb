@@ -1,9 +1,11 @@
 <template>
   <div class="gesture-container">
+    <!-- Video kamera ditampilkan -->
     <video ref="video" class="video" autoplay playsinline></video>
+    <!-- Canvas overlay untuk menggambar skeleton, landmark, dsb -->
     <canvas ref="canvas" class="canvas"></canvas>
 
-    <!-- Panel -->
+    <!-- Panel Kontrol dan Informasi -->
     <div class="panel">
       <h3>⚙️ Controls</h3>
       <button @click="toggleSkeleton">{{ showSkeleton ? 'Hide Skeleton' : 'Show Skeleton' }}</button>
@@ -36,8 +38,8 @@ const detectedGesture = ref('')
 const rightFingerStatus = ref('')
 const leftFingerStatus = ref('')
 
-let cooldown = {} // map gesture->timestamp
-const COOLDOWN_MS = 1400 // 1.4s between same gesture announcements
+let cooldown = {}
+const COOLDOWN_MS = 1400
 
 function toggleSkeleton(){ showSkeleton.value = !showSkeleton.value }
 function toggleAudio(){ audioEnabled.value = !audioEnabled.value }
@@ -47,20 +49,16 @@ function speak(text){
   if(window.speechSynthesis) {
     window.speechSynthesis.cancel()
     const u = new SpeechSynthesisUtterance(text)
-    u.lang = 'id-ID' // ubah kalau perlu
+    u.lang = 'id-ID'
     window.speechSynthesis.speak(u)
   }
 }
 
-// === finger helpers (mediapipe hand landmark indices) ===
-// indices: thumb:4 tip, 3 ip, 2 mcp? (mediapipe hand indexing used below)
+// === finger helpers ===
 const TIP = { thumb:4, index:8, middle:12, ring:16, pinky:20 }
 const PIP = { thumb:3, index:6, middle:10, ring:14, pinky:18 }
 const MCP = { thumb:2, index:5, middle:9, ring:13, pinky:17 }
 
-// return whether finger is extended (simple vertical test)
-// handLandmarks: array of {x,y,z,...}
-// orientation: assume y increases downward (normalized coords)
 function isFingerExtended(handLandmarks, finger){
   if(!handLandmarks) return false
   const tip = handLandmarks[TIP[finger]]
@@ -68,19 +66,14 @@ function isFingerExtended(handLandmarks, finger){
   const mcp = handLandmarks[MCP[finger]]
   if(!tip || !pip || !mcp) return false
 
-  // For index/middle/ring/pinky: tip.y < pip.y => extended (finger up)
   if(finger !== 'thumb'){
-    return tip.y < pip.y - 0.01 // small margin
+    return tip.y < pip.y - 0.01
   }
-
-  // Thumb heuristic: check horizontal separation (thumb often points sideways)
-  // If thumb tip is significantly away from palm (mcp) in x direction, consider extended.
   const dx = Math.abs(tip.x - mcp.x)
   const dy = Math.abs(tip.y - mcp.y)
   return dx > 0.04 && dx > dy*0.6
 }
 
-// human-readable status string
 function fingerStatusString(handLandmarks){
   if(!handLandmarks) return '-'
   const fingers=['thumb','index','middle','ring','pinky']
@@ -88,7 +81,6 @@ function fingerStatusString(handLandmarks){
   return statuses.join(', ')
 }
 
-// cooldown guard
 function tryTrigger(name, fn){
   const now = Date.now()
   if(!cooldown[name] || now - cooldown[name] > COOLDOWN_MS){
@@ -97,17 +89,15 @@ function tryTrigger(name, fn){
   }
 }
 
-// Detect finger gestures: point (index extended only), thumbs-up
+// Deteksi gesture sederhana
 function detectFingerGestures(leftHand, rightHand){
-  // Right hand gestures (prefer right for voice)
+  // Right hand
   if(rightHand){
     const idx = isFingerExtended(rightHand,'index')
     const mid = isFingerExtended(rightHand,'middle')
     const ring = isFingerExtended(rightHand,'ring')
     const pinky = isFingerExtended(rightHand,'pinky')
     const thumb = isFingerExtended(rightHand,'thumb')
-
-    // Pointing: index extended, others (middle,ring,pinky) not extended
     if(idx && !mid && !ring && !pinky){
       tryTrigger('right_point', () => {
         detectedGesture.value = 'Right: Pointing (Index)'
@@ -115,8 +105,6 @@ function detectFingerGestures(leftHand, rightHand){
       })
       return
     }
-
-    // Thumbs up: thumb extended and most other fingers folded
     const otherExtended = mid || ring || pinky
     if(thumb && !otherExtended){
       tryTrigger('right_thumbs', () => {
@@ -126,15 +114,13 @@ function detectFingerGestures(leftHand, rightHand){
       return
     }
   }
-
-  // Left hand symmetrical
+  // Left hand
   if(leftHand){
     const idx = isFingerExtended(leftHand,'index')
     const mid = isFingerExtended(leftHand,'middle')
     const ring = isFingerExtended(leftHand,'ring')
     const pinky = isFingerExtended(leftHand,'pinky')
     const thumb = isFingerExtended(leftHand,'thumb')
-
     if(idx && !mid && !ring && !pinky){
       tryTrigger('left_point', () => {
         detectedGesture.value = 'Left: Pointing (Index)'
@@ -142,7 +128,6 @@ function detectFingerGestures(leftHand, rightHand){
       })
       return
     }
-
     const otherExtended = mid || ring || pinky
     if(thumb && !otherExtended){
       tryTrigger('left_thumbs', () => {
@@ -154,7 +139,7 @@ function detectFingerGestures(leftHand, rightHand){
   }
 }
 
-// Higher-level gestures (raise hand, wave, nod) reuse earlier logic
+// Deteksi gestur kepala & lambaikan tangan
 let lastNoseY = null, lastNoseX = null, waveBuffer = []
 function detectHigherGestures(results){
   const pose = results.poseLandmarks
@@ -172,8 +157,6 @@ function detectHigherGestures(results){
       }
       lastNoseX = nose.x
     }
-
-    // Raise hand: wrist above nose (y smaller)
     const leftW = pose[15], rightW = pose[16]
     if(leftW && rightW && nose){
       if((leftW.y < nose.y) || (rightW.y < nose.y)){
@@ -181,8 +164,6 @@ function detectHigherGestures(results){
       }
     }
   }
-
-  // Wave detection using x-oscillation of right wrist
   if(results.rightHandLandmarks && results.rightHandLandmarks[0]){
     const wx = results.rightHandLandmarks[0].x
     waveBuffer.push(wx)
@@ -196,15 +177,14 @@ function detectHigherGestures(results){
   }
 }
 
-// draw & helpers
+// Gambar hasil deteksi
 function onResults(results){
   if(!ctx.value) return
   ctx.value.clearRect(0,0,canvas.value.width,canvas.value.height)
-  // draw background camera frame
+  // Gambar frame kamera
   if(results.image) ctx.value.drawImage(results.image, 0, 0, canvas.value.width, canvas.value.height)
 
   if(showSkeleton.value){
-    // use drawing_utils from CDN (window.drawConnectors etc.)
     if(results.poseLandmarks){
       window.drawConnectors(ctx.value, results.poseLandmarks, window.POSE_CONNECTIONS, {color:'#00FF00', lineWidth:2})
       window.drawLandmarks(ctx.value, results.poseLandmarks, {color:'#FF0000', lineWidth:1})
@@ -222,16 +202,14 @@ function onResults(results){
     }
   }
 
-  // update finger status strings
   rightFingerStatus.value = results.rightHandLandmarks ? fingerStatusString(results.rightHandLandmarks) : '-'
   leftFingerStatus.value = results.leftHandLandmarks ? fingerStatusString(results.leftHandLandmarks) : '-'
 
-  // run detections
   detectFingerGestures(results.leftHandLandmarks, results.rightHandLandmarks)
   detectHigherGestures(results)
 }
 
-// adapt canvas to video size
+// Sesuaikan ukuran canvas dengan video
 function adaptCanvas(){
   const w = video.value.videoWidth || 640
   const h = video.value.videoHeight || 480
@@ -239,45 +217,60 @@ function adaptCanvas(){
   canvas.value.height = h
 }
 
-// onMounted: setup camera & mediapipe (CDN)
 onMounted(async ()=>{
   ctx.value = canvas.value.getContext('2d')
-  // request camera
-  const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } })
-  video.value.srcObject = stream
-  await video.value.play()
-  adaptCanvas()
-
-  // wait until the global Holistic & Camera objects are available (loaded via CDN in app head)
-  if(!window.Holistic || !window.Camera){
-    // If CDN not loaded, inject script (fallback)
-    const s = document.createElement('script')
-    s.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js'
-    document.head.appendChild(s)
-    // camera_utils and drawing_utils usually bundled; ensure camera utils
-    const s2 = document.createElement('script')
-    s2.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js'
-    document.head.appendChild(s2)
-    const s3 = document.createElement('script')
-    s3.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js'
-    document.head.appendChild(s3)
-    // wait a short while for scripts to load
-    await new Promise(res => setTimeout(res, 700))
+  // Minta akses kamera
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } })
+    video.value.srcObject = stream
+    await video.value.play()
+    adaptCanvas()
+  } catch (e) {
+    detectedGesture.value = 'Tidak bisa akses kamera! Izinkan akses kamera browser.'
+    return
   }
 
-  // create Holistic from global
+  // Pastikan Holistic, Camera, dan drawing_utils sudah tersedia (dari CDN)
+  function waitForGlobals() {
+    return new Promise(resolve => {
+      function check() {
+        if (window.Holistic && window.Camera && window.drawConnectors) resolve();
+        else setTimeout(check, 100);
+      }
+      check();
+    });
+  }
+
+  // Jika CDN belum termuat, inject script
+  if(!window.Holistic || !window.Camera || !window.drawConnectors){
+    const scripts = [
+      'https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js',
+      'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js',
+      'https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js'
+    ];
+    for(const src of scripts){
+      if(!document.querySelector(`script[src="${src}"]`)){
+        const s = document.createElement('script')
+        s.src = src
+        document.head.appendChild(s)
+      }
+    }
+    await waitForGlobals()
+  }
+
+  // Buat Holistic
   const holistic = new window.Holistic.Holistic({
     locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`
   })
   holistic.setOptions({
-    modelComplexity: 0, // optimized for mobile
+    modelComplexity: 0,
     smoothLandmarks: true,
     minDetectionConfidence: 0.45,
     minTrackingConfidence: 0.45
   })
   holistic.onResults(onResults)
 
-  // Camera (camera_utils) will call holistic on each frame
+  // Buat Camera (dari camera_utils)
   const cameraInst = new window.Camera(video.value, {
     onFrame: async () => {
       await holistic.send({ image: video.value })
@@ -291,8 +284,8 @@ onMounted(async ()=>{
 
 <style scoped>
 .gesture-container{ position:relative; max-width:720px; margin:20px auto }
-.video{ display:none }
-.canvas{ width:100%; border-radius:12px; box-shadow:0 6px 20px rgba(0,0,0,0.2) }
+.video{ display:block; width:100%; border-radius:12px; box-shadow:0 6px 20px rgba(0,0,0,0.2) }
+.canvas{ position:absolute; top:0; left:0; width:100%; height:100%; border-radius:12px; pointer-events:none }
 .panel{ margin-top:10px; padding:10px; background:#fff; border-radius:8px; text-align:center; box-shadow:0 2px 8px rgba(0,0,0,0.08) }
 .panel button{ margin:6px; padding:8px 12px; border-radius:6px; border:none; background:#0066ff; color:#fff; cursor:pointer }
 .panel button:hover{ opacity:0.9 }
