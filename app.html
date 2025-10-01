@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="id">
-  <head>
-    <!-- Nuxt akan inject head otomatis dari nuxt.config.ts -->
+<html {{ HTML_ATTRS }}>
+  <head {{ HEAD_ATTRS }}>
+    {{ HEAD }}
   </head>
-  <body>
-    <div id="__nuxt"></div>
+  <body {{ BODY_ATTRS }}>
+    {{ APP }}
   </body>
 </html>
