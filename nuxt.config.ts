@@ -1,15 +1,19 @@
 // nuxt.config.ts
 export default defineNuxtConfig({
-  // Hanya di-render di client (wajib untuk fitur webcam dan mediapipe)
-  ssr: false,
-  css: [
-    '@/assets/css/global.css'
-  ],
+  ssr: false, // hanya client-side (karena pakai kamera & speech)
+  nitro: {
+    preset: 'vercel'
+  },
   app: {
     head: {
-      title: 'Webcam Gesture',
+      title: "Gesture Detection Demo",
       meta: [
-        { name: 'description', content: 'webcam dengan Nuxt3' }
+        { name: 'viewport', content: 'width=device-width, initial-scale=1.0' }
+      ],
+      script: [
+        { src: "https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" },
+        { src: "https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" },
+        { src: "https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" }
       ]
     }
   }
