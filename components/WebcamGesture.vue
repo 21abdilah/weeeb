@@ -66,7 +66,7 @@ const audioEnabled = ref(false)
 let stream = null
 let holistic = null
 
-const gestureState = ref({ handUp: false, wave: false, nod: false })
+const gestureState = ref({ handUp: false, wave: false })
 let prevRightWristX = 0
 const myInfo = 'Halo semuanya! Perkenalkan, saya Hilal Abdilah, mahasiswa baru Teknik Informatika. Senang bertemu dengan kalian semua!'
 
@@ -116,45 +116,65 @@ function showConfetti(){
   }
 }
 
-/** Camera Setup **/
+/** Camera Setup Low-Res for Mobile **/
 async function setupCamera() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return
   if (stream) stream.getTracks().forEach(t => t.stop())
-  stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode:facingMode.value, width:640, height:480 } })
+  stream = await navigator.mediaDevices.getUserMedia({ 
+    video: { facingMode:facingMode.value, width:320, height:240 } 
+  })
   video.value.srcObject = stream
 }
 
-/** Draw Keypoints & Skeleton **/
+/** Draw Keypoints & Skeleton including Hands **/
 function drawKeypoints(results){
   if(!ctx.value) return
   ctx.value.clearRect(0,0,canvas.value.width,canvas.value.height)
   const scaleX = canvas.value.width / video.value.videoWidth
   const scaleY = canvas.value.height / video.value.videoHeight
 
-  const drawLandmarks = (landmarks,color='red') => {
+  const drawLandmarks = (landmarks,color='red',connections=[]) => {
     if(!landmarks) return
+    // draw lines
+    connections.forEach(([i,j])=>{
+      if(landmarks[i] && landmarks[j]){
+        ctx.value.strokeStyle=color
+        ctx.value.lineWidth=2
+        ctx.value.beginPath()
+        ctx.value.moveTo(landmarks[i].x*scaleX,landmarks[i].y*scaleY)
+        ctx.value.lineTo(landmarks[j].x*scaleX,landmarks[j].y*scaleY)
+        ctx.value.stroke()
+      }
+    })
+    // draw points
     for(const lm of landmarks){
       ctx.value.beginPath()
-      ctx.value.arc(lm.x*scaleX,lm.y*scaleY,4,0,2*Math.PI)
+      ctx.value.arc(lm.x*scaleX,lm.y*scaleY,2,0,2*Math.PI)
       ctx.value.fillStyle=color
       ctx.value.fill()
     }
   }
 
+  const handConnections = [
+    [0,1],[1,2],[2,3],[3,4],
+    [0,5],[5,6],[6,7],[7,8],
+    [0,9],[9,10],[10,11],[11,12],
+    [0,13],[13,14],[14,15],[15,16],
+    [0,17],[17,18],[18,19],[19,20]
+  ]
+
   drawLandmarks(results.poseLandmarks,'lime')
-  drawLandmarks(results.leftHandLandmarks,'yellow')
-  drawLandmarks(results.rightHandLandmarks,'yellow')
-  drawLandmarks(results.faceLandmarks,'white')
+  drawLandmarks(results.leftHandLandmarks,'yellow',handConnections)
+  drawLandmarks(results.rightHandLandmarks,'yellow',handConnections)
 }
 
 /** Detect Gestures **/
 function detectGestures(results){
-  if(!results.poseLandmarks || !results.leftHandLandmarks) return
-  const leftWrist = results.poseLandmarks[15] // left_wrist
-  const rightWrist = results.poseLandmarks[16] // right_wrist
+  if(!results.poseLandmarks || !results.rightHandLandmarks) return
+  const leftWrist = results.poseLandmarks[15]
+  const rightWrist = results.poseLandmarks[16]
   const leftShoulder = results.poseLandmarks[11]
   const rightShoulder = results.poseLandmarks[12]
-  const nose = results.poseLandmarks[0]
 
   if(leftWrist && rightWrist && leftShoulder && rightShoulder){
     if(!gestureState.value.handUp && (leftWrist.y < leftShoulder.y || rightWrist.y < rightShoulder.y)){
@@ -173,10 +193,6 @@ function detectGestures(results){
     }
     prevRightWristX=rightWrist.x
   }
-
-  if(nose){
-    // bisa tambah deteksi geleng kepala menggunakan nose + eyes
-  }
 }
 
 /** Run Holistic Detection **/
@@ -187,24 +203,28 @@ function onResults(results){
 
 onMounted(async ()=>{
   ctx.value = canvas.value.getContext('2d')
-  canvas.value.width = 640
-  canvas.value.height = 480
+  canvas.value.width = 320
+  canvas.value.height = 240
 
   loadVoices()
   if(speechSynthesis.onvoiceschanged!==undefined) speechSynthesis.onvoiceschanged=loadVoices
 
   await setupCamera()
   holistic = new mpHolistic.Holistic({locateFile:(file)=>`https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`})
-  holistic.setOptions({modelComplexity:1,smoothLandmarks:true,minDetectionConfidence:0.5,minTrackingConfidence:0.5})
+  holistic.setOptions({modelComplexity:0,smoothLandmarks:true,minDetectionConfidence:0.5,minTrackingConfidence:0.5})
   holistic.onResults(onResults)
 
-  async function detectFrame(){
-    if(video.value.readyState >=2){
-      await holistic.send({image:video.value})
+  let lastTime = 0
+  async function detectFrame(timestamp){
+    if(timestamp - lastTime > 33){ // ~30 FPS
+      lastTime = timestamp
+      if(video.value.readyState >=2){
+        await holistic.send({image:video.value})
+      }
     }
     requestAnimationFrame(detectFrame)
   }
-  detectFrame()
+  detectFrame(0)
 })
 </script>
 
@@ -215,5 +235,4 @@ canvas { position:absolute; top:0; left:0; width:100%; height:100%; pointer-even
 @keyframes fall { to{ transform:translateY(100vh) rotate(720deg); opacity:0;} }
 .fade-enter-active,.fade-leave-active{transition:opacity 0.5s;}
 .fade-enter-from,.fade-leave-to{opacity:0;}
-.spoken-text{position:absolute;bottom:5px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.7);padding:5px 10px;border-radius:5px;}
 </style>
