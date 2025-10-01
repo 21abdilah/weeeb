@@ -181,24 +181,30 @@ function drawKeypoints(keypoints){
     ['right_hip','right_knee'],
     ['right_knee','right_ankle']
   ]
-  ctx.value.strokeStyle='lime'
   ctx.value.lineWidth=2
   skeleton.forEach(([p1,p2])=>{
     const kp1 = keypoints.find(k=>k.name===p1)
     const kp2 = keypoints.find(k=>k.name===p2)
     if(kp1 && kp2){
+      ctx.value.strokeStyle='lime'
       ctx.value.beginPath()
-      ctx.value.moveTo(kp1.x, kp1.y)
-      ctx.value.lineTo(kp2.x, kp2.y)
+      ctx.value.moveTo(kp1.x,kp1.y)
+      ctx.value.lineTo(kp2.x,kp2.y)
       ctx.value.stroke()
     }
   })
 
   // draw keypoints
   keypoints.forEach(k=>{
-    ctx.value.fillStyle='red'
+    if((gestureState.value.handUp && (k.name==='left_wrist'||k.name==='right_wrist')) ||
+       (gestureState.value.wave && k.name==='right_wrist') ||
+       (gestureState.value.nod && k.name==='nose'))
+      ctx.value.fillStyle='yellow'
+    else
+      ctx.value.fillStyle='red'
+
     ctx.value.beginPath()
-    ctx.value.arc(k.x,k.y,5,0,2*Math.PI)
+    ctx.value.arc(k.x,k.y,6,0,2*Math.PI)
     ctx.value.fill()
   })
 }
@@ -235,7 +241,7 @@ function detectGestures(keypoints){
 
   // geleng kepala
   if(nose && leftEye && rightEye){
-    const angle = Math.atan2(rightEye.y-leftEye.y, rightEye.x-leftEye.x) * 180/Math.PI
+    const angle = Math.atan2(rightEye.y-leftEye.y,rightEye.x-leftEye.x)*180/Math.PI
     if(!gestureState.value.nod && Math.abs(angle)>15){
       gestureState.value.nod=true
       speak('Terima kasih, sampai jumpa!')
