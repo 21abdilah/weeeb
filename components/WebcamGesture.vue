@@ -2,7 +2,7 @@
   <div class="min-h-screen flex flex-col items-center justify-center bg-gray-900 text-white p-4">
     <div class="w-full max-w-6xl grid md:grid-cols-3 gap-4">
 
-      <!-- Kamera -->
+      <!-- camera -->
       <div class="md:col-span-2 flex justify-center">
         <div class="relative w-full max-w-xl aspect-video bg-black rounded-xl shadow-lg overflow-hidden">
           <video ref="video" autoplay playsinline muted class="w-full h-full object-cover"></video>
