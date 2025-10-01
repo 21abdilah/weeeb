@@ -1,15 +1,16 @@
 // nuxt.config.ts
 export default defineNuxtConfig({
-  ssr: false, // hanya client-side (butuh untuk camera & Mediapipe)
+  // Hanya di-render di client (wajib untuk fitur webcam dan mediapipe)
+  ssr: false,
   css: [
     '@/assets/main.css'
   ],
-  build: {
-    transpile: []
-  },
-  vite: {
-    optimizeDeps: {
-      exclude: ['@mediapipe/holistic']
+  app: {
+    head: {
+      title: 'Webcam Gesture',
+      meta: [
+        { name: 'description', content: 'Demo interaktif gesture webcam dengan Nuxt3' }
+      ]
     }
   }
 })
