@@ -8,8 +8,5 @@
   },
   "dependencies": {
     "nuxt": "^3.19.1"
-  },
-  "devDependencies": {
-    "typescript": "^5.1.0"
   }
 }
