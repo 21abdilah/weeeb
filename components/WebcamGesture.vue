@@ -73,6 +73,7 @@ const gestureState = ref({ handUp:false, wave:false, nod:false })
 let prevRightWristX = 0
 const myInfo = 'Halo semuanya! Perkenalkan, saya Hilal Abdilah, mahasiswa baru Teknik Informatika. Senang bertemu dengan kalian semua!'
 
+/** VOICE SETUP **/
 function loadVoices() {
   voices.value = speechSynthesis.getVoices()
   selectedVoice.value = voices.value.find(v => v.lang.includes('id'))?.name 
@@ -101,6 +102,7 @@ function speak(text){
   utter.onend = ()=>{ spokenText.value = '' }
 }
 
+/** CONFETTI **/
 function showConfetti(){
   for(let i=0;i<15;i++){
     const c=document.createElement('div')
@@ -112,6 +114,7 @@ function showConfetti(){
   }
 }
 
+/** CAMERA SETUP **/
 async function setupCamera() {
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
     cameraAvailable.value=false
@@ -146,7 +149,7 @@ async function initTF(){
   catch{ await tf.setBackend('cpu'); await tf.ready() } }
 }
 
-// smoothing 3 frame
+/** SMOOTHING **/
 function smoothKeypoints(keypoints){
   lastKeypoints.push(keypoints)
   if(lastKeypoints.length>3) lastKeypoints.shift()
@@ -161,16 +164,14 @@ function smoothKeypoints(keypoints){
   })
 }
 
-// draw skeleton & keypoints menempel di video
+/** DRAW KEYPOINTS & SKELETON **/
 function drawKeypoints(keypoints){
   if(!ctx.value) return
   ctx.value.clearRect(0,0,canvas.value.width,canvas.value.height)
 
-  // scaling agar menempel
   const scaleX = canvas.value.width / video.value.videoWidth
   const scaleY = canvas.value.height / video.value.videoHeight
 
-  // skeleton
   const skeleton = [
     ['left_shoulder','right_shoulder'],
     ['left_shoulder','left_elbow'],
@@ -198,7 +199,6 @@ function drawKeypoints(keypoints){
     }
   })
 
-  // keypoints
   keypoints.forEach(k=>{
     const x = k.x*scaleX
     const y = k.y*scaleY
@@ -215,7 +215,7 @@ function drawKeypoints(keypoints){
   })
 }
 
-// detect gestures
+/** DETECT GESTURES **/
 function detectGestures(keypoints){
   const leftWrist = keypoints.find(p=>p.name==='left_wrist')
   const rightWrist = keypoints.find(p=>p.name==='right_wrist')
@@ -225,7 +225,7 @@ function detectGestures(keypoints){
   const leftEye = keypoints.find(p=>p.name==='left_eye')
   const rightEye = keypoints.find(p=>p.name==='right_eye')
 
-  // angkat tangan
+  // Angkat tangan
   if(leftWrist && rightWrist && leftShoulder && rightShoulder){
     if(!gestureState.value.handUp && (leftWrist.y<leftShoulder.y || rightWrist.y<rightShoulder.y)){
       gestureState.value.handUp=true
@@ -234,7 +234,7 @@ function detectGestures(keypoints){
     }
   }
 
-  // wave tangan
+  // Wave tangan
   if(rightWrist){
     const deltaX = rightWrist.x - prevRightWristX
     if(!gestureState.value.wave && Math.abs(deltaX)>50){
@@ -245,7 +245,7 @@ function detectGestures(keypoints){
     prevRightWristX = rightWrist.x
   }
 
-  // geleng kepala
+  // Geleng kepala
   if(nose && leftEye && rightEye){
     const angle = Math.atan2(rightEye.y-leftEye.y,rightEye.x-leftEye.x)*180/Math.PI
     if(!gestureState.value.nod && Math.abs(angle)>15){
@@ -256,6 +256,7 @@ function detectGestures(keypoints){
   }
 }
 
+/** RUN DETECTION **/
 async function runDetection(){
   if(!detector || !cameraOn.value) return
   try{
