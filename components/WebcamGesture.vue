@@ -65,6 +65,7 @@ const facingMode = ref('user')
 let detector = null
 let stream = null
 let audioEnabled = ref(false)
+const spokenText = ref('')
 
 // Gesture & smoothing
 const lastKeypoints = []
@@ -122,7 +123,6 @@ async function setupCamera() {
       video:{ facingMode:facingMode.value, width:640, height:480 } 
     })
     video.value.srcObject = stream
-    video.value.style.transform = 'scaleX(1)'
     cameraAvailable.value=true
   }catch{ cameraAvailable.value=false }
 }
@@ -161,12 +161,16 @@ function smoothKeypoints(keypoints){
   })
 }
 
-// draw skeleton & keypoints
+// draw skeleton & keypoints menempel di video
 function drawKeypoints(keypoints){
   if(!ctx.value) return
   ctx.value.clearRect(0,0,canvas.value.width,canvas.value.height)
 
-  // skeleton connections
+  // scaling agar menempel
+  const scaleX = canvas.value.width / video.value.videoWidth
+  const scaleY = canvas.value.height / video.value.videoHeight
+
+  // skeleton
   const skeleton = [
     ['left_shoulder','right_shoulder'],
     ['left_shoulder','left_elbow'],
@@ -188,14 +192,16 @@ function drawKeypoints(keypoints){
     if(kp1 && kp2){
       ctx.value.strokeStyle='lime'
       ctx.value.beginPath()
-      ctx.value.moveTo(kp1.x,kp1.y)
-      ctx.value.lineTo(kp2.x,kp2.y)
+      ctx.value.moveTo(kp1.x*scaleX, kp1.y*scaleY)
+      ctx.value.lineTo(kp2.x*scaleX, kp2.y*scaleY)
       ctx.value.stroke()
     }
   })
 
-  // draw keypoints
+  // keypoints
   keypoints.forEach(k=>{
+    const x = k.x*scaleX
+    const y = k.y*scaleY
     if((gestureState.value.handUp && (k.name==='left_wrist'||k.name==='right_wrist')) ||
        (gestureState.value.wave && k.name==='right_wrist') ||
        (gestureState.value.nod && k.name==='nose'))
@@ -204,7 +210,7 @@ function drawKeypoints(keypoints){
       ctx.value.fillStyle='red'
 
     ctx.value.beginPath()
-    ctx.value.arc(k.x,k.y,6,0,2*Math.PI)
+    ctx.value.arc(x,y,6,0,2*Math.PI)
     ctx.value.fill()
   })
 }
@@ -275,7 +281,7 @@ onMounted(()=>{
 
 <style scoped>
 video { border-radius:1rem; width:100%; height:100%; object-fit:cover; }
-canvas { border-radius:1rem; width:100%; height:100%; pointer-events:none; }
+canvas { border-radius:1rem; width:100%; height:100%; pointer-events:none; position:absolute; top:0; left:0; }
 .confetti { position:fixed; width:8px; height:8px; border-radius:50%; animation:fall 2s linear forwards; pointer-events:none; }
 @keyframes fall { to{ transform:translateY(100vh) rotate(720deg); opacity:0; } }
 .fade-enter-active,.fade-leave-active{transition:opacity 0.5s;}
