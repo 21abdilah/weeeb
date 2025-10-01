@@ -3,7 +3,7 @@ export default defineNuxtConfig({
   // Hanya di-render di client (wajib untuk fitur webcam dan mediapipe)
   ssr: false,
   css: [
-    '@/assets/main.css'
+    '@/assets/global.css'
   ],
   app: {
     head: {
