@@ -1,10 +1,15 @@
-// nuxt.config.ts
-import { defineNuxtConfig } from 'nuxt/config'
+import { defineNuxtConfig } from 'nuxt'
 
 export default defineNuxtConfig({
-  ssr: false, // non-SSR karena pakai webcam
-  css: ['~/assets/css/global.css'],
+  ssr: false, // Semua kode webcam client-only
+  build: {
+    transpile: ['@mediapipe/holistic']
+  },
   vite: {
-    define: { 'process.env': {} }
+    build: {
+      rollupOptions: {
+        external: []
+      }
+    }
   }
 })
