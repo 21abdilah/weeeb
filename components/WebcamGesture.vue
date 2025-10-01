@@ -98,7 +98,7 @@ function speak(text){
   utter.rate=1; utter.pitch=1
   window.speechSynthesis.speak(utter)
   spokenText.value=text
-  utter.onend=()=>{ spokenText.value='' }
+  utter.onend=()=>{spokenText.value='' }
 }
 
 /** Confetti **/
