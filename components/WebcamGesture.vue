@@ -1,11 +1,11 @@
 <template>
   <div class="gesture-container">
-    <!-- Video kamera ditampilkan -->
+    <!-- Kamera tampil -->
     <video ref="video" class="video" autoplay playsinline></video>
-    <!-- Canvas overlay untuk menggambar skeleton, landmark, dsb -->
+    <!-- Canvas overlay -->
     <canvas ref="canvas" class="canvas"></canvas>
 
-    <!-- Panel Kontrol dan Informasi -->
+    <!-- Panel Kontrol & Info -->
     <div class="panel">
       <h3>⚙️ Controls</h3>
       <button @click="toggleSkeleton">{{ showSkeleton ? 'Hide Skeleton' : 'Show Skeleton' }}</button>
@@ -22,12 +22,25 @@
         <div style="font-size:12px">{{ leftFingerStatus }}</div>
       </div>
     </div>
+
+    <!-- DEBUG PANEL -->
+    <div class="panel debug-panel">
+      <strong>Debug Info</strong>
+      <div style="font-size:11px; text-align:left;">
+        onResults called: <b>{{ debug.onResultsCalled ? 'Ya' : 'Tidak' }}</b><br>
+        poseLandmarks: <b>{{ debug.poseLandmarks ? 'Ada' : 'Tidak' }}</b><br>
+        rightHandLandmarks: <b>{{ debug.rightHandLandmarks ? 'Ada' : 'Tidak' }}</b><br>
+        leftHandLandmarks: <b>{{ debug.leftHandLandmarks ? 'Ada' : 'Tidak' }}</b><br>
+        <span v-if="debug.lastError" style="color:red;">Error: {{ debug.lastError }}</span>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
 
+// Data refs
 const video = ref(null)
 const canvas = ref(null)
 const ctx = ref(null)
@@ -38,8 +51,17 @@ const detectedGesture = ref('')
 const rightFingerStatus = ref('')
 const leftFingerStatus = ref('')
 
+// Debug state
+const debug = ref({
+  onResultsCalled: false,
+  poseLandmarks: false,
+  rightHandLandmarks: false,
+  leftHandLandmarks: false,
+  lastError: ''
+})
+
 let cooldown = {}
-const COOLDOWN_MS = 1400
+const COOLDOWN_MS = 900 // lebih responsif
 
 function toggleSkeleton(){ showSkeleton.value = !showSkeleton.value }
 function toggleAudio(){ audioEnabled.value = !audioEnabled.value }
@@ -54,7 +76,7 @@ function speak(text){
   }
 }
 
-// === finger helpers ===
+// === Finger helpers ===
 const TIP = { thumb:4, index:8, middle:12, ring:16, pinky:20 }
 const PIP = { thumb:3, index:6, middle:10, ring:14, pinky:18 }
 const MCP = { thumb:2, index:5, middle:9, ring:13, pinky:17 }
@@ -124,7 +146,7 @@ function detectFingerGestures(leftHand, rightHand){
     if(idx && !mid && !ring && !pinky){
       tryTrigger('left_point', () => {
         detectedGesture.value = 'Left: Pointing (Index)'
-        speak('Menunjuk dengan jari telunjuk (kiri)')
+        speak('Menunjuk dengan jari telunjuk kiri')
       })
       return
     }
@@ -132,7 +154,7 @@ function detectFingerGestures(leftHand, rightHand){
     if(thumb && !otherExtended){
       tryTrigger('left_thumbs', () => {
         detectedGesture.value = 'Left: Thumbs Up'
-        speak('Jempol ke atas (kiri)')
+        speak('Jempol ke atas kiri')
       })
       return
     }
@@ -143,8 +165,6 @@ function detectFingerGestures(leftHand, rightHand){
 let lastNoseY = null, lastNoseX = null, waveBuffer = []
 function detectHigherGestures(results){
   const pose = results.poseLandmarks
-  const rightHand = results.rightHandLandmarks
-  const leftHand = results.leftHandLandmarks
   if(pose){
     const nose = pose[0]
     if(nose){
@@ -157,6 +177,7 @@ function detectHigherGestures(results){
       }
       lastNoseX = nose.x
     }
+    // Raise hand: wrist above nose
     const leftW = pose[15], rightW = pose[16]
     if(leftW && rightW && nose){
       if((leftW.y < nose.y) || (rightW.y < nose.y)){
@@ -179,26 +200,32 @@ function detectHigherGestures(results){
 
 // Gambar hasil deteksi
 function onResults(results){
+  debug.value.onResultsCalled = true
+  debug.value.poseLandmarks = !!results.poseLandmarks
+  debug.value.rightHandLandmarks = !!results.rightHandLandmarks
+  debug.value.leftHandLandmarks = !!results.leftHandLandmarks
+
   if(!ctx.value) return
   ctx.value.clearRect(0,0,canvas.value.width,canvas.value.height)
-  // Gambar frame kamera
   if(results.image) ctx.value.drawImage(results.image, 0, 0, canvas.value.width, canvas.value.height)
 
   if(showSkeleton.value){
-    if(results.poseLandmarks){
-      window.drawConnectors(ctx.value, results.poseLandmarks, window.POSE_CONNECTIONS, {color:'#00FF00', lineWidth:2})
-      window.drawLandmarks(ctx.value, results.poseLandmarks, {color:'#FF0000', lineWidth:1})
-    }
-    if(results.leftHandLandmarks){
-      window.drawConnectors(ctx.value, results.leftHandLandmarks, window.HAND_CONNECTIONS, {color:'#FF8800', lineWidth:2})
-      window.drawLandmarks(ctx.value, results.leftHandLandmarks, {color:'#FFFF00', lineWidth:1})
-    }
-    if(results.rightHandLandmarks){
-      window.drawConnectors(ctx.value, results.rightHandLandmarks, window.HAND_CONNECTIONS, {color:'#00FFFF', lineWidth:2})
-      window.drawLandmarks(ctx.value, results.rightHandLandmarks, {color:'#FF00FF', lineWidth:1})
-    }
-    if(results.faceLandmarks){
-      window.drawLandmarks(ctx.value, results.faceLandmarks, {color:'#8888FF', lineWidth:0.5})
+    if(window.drawConnectors && window.drawLandmarks){
+      if(results.poseLandmarks){
+        window.drawConnectors(ctx.value, results.poseLandmarks, window.POSE_CONNECTIONS, {color:'#00FF00', lineWidth:2})
+        window.drawLandmarks(ctx.value, results.poseLandmarks, {color:'#FF0000', lineWidth:1})
+      }
+      if(results.leftHandLandmarks){
+        window.drawConnectors(ctx.value, results.leftHandLandmarks, window.HAND_CONNECTIONS, {color:'#FF8800', lineWidth:2})
+        window.drawLandmarks(ctx.value, results.leftHandLandmarks, {color:'#FFFF00', lineWidth:1})
+      }
+      if(results.rightHandLandmarks){
+        window.drawConnectors(ctx.value, results.rightHandLandmarks, window.HAND_CONNECTIONS, {color:'#00FFFF', lineWidth:2})
+        window.drawLandmarks(ctx.value, results.rightHandLandmarks, {color:'#FF00FF', lineWidth:1})
+      }
+      if(results.faceLandmarks){
+        window.drawLandmarks(ctx.value, results.faceLandmarks, {color:'#8888FF', lineWidth:0.5})
+      }
     }
   }
 
@@ -226,11 +253,11 @@ onMounted(async ()=>{
     await video.value.play()
     adaptCanvas()
   } catch (e) {
+    debug.value.lastError = e.message || String(e)
     detectedGesture.value = 'Tidak bisa akses kamera! Izinkan akses kamera browser.'
     return
   }
-
-  // Pastikan Holistic, Camera, dan drawing_utils sudah tersedia (dari CDN)
+  // Pastikan Holistic, Camera, drawing_utils sudah tersedia
   function waitForGlobals() {
     return new Promise(resolve => {
       function check() {
@@ -240,8 +267,7 @@ onMounted(async ()=>{
       check();
     });
   }
-
-  // Jika CDN belum termuat, inject script
+  // Inject CDN script jika belum ada
   if(!window.Holistic || !window.Camera || !window.drawConnectors){
     const scripts = [
       'https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js',
@@ -257,7 +283,6 @@ onMounted(async ()=>{
     }
     await waitForGlobals()
   }
-
   // Buat Holistic
   const holistic = new window.Holistic.Holistic({
     locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`
@@ -269,7 +294,6 @@ onMounted(async ()=>{
     minTrackingConfidence: 0.45
   })
   holistic.onResults(onResults)
-
   // Buat Camera (dari camera_utils)
   const cameraInst = new window.Camera(video.value, {
     onFrame: async () => {
@@ -289,4 +313,5 @@ onMounted(async ()=>{
 .panel{ margin-top:10px; padding:10px; background:#fff; border-radius:8px; text-align:center; box-shadow:0 2px 8px rgba(0,0,0,0.08) }
 .panel button{ margin:6px; padding:8px 12px; border-radius:6px; border:none; background:#0066ff; color:#fff; cursor:pointer }
 .panel button:hover{ opacity:0.9 }
+.debug-panel{ background:#f7fafc; border:1px solid #e2e8f0; margin-top:8px; }
 </style>
