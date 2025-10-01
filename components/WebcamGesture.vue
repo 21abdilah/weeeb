@@ -6,6 +6,11 @@
       <div class="md:col-span-2 flex justify-center relative">
         <video ref="video" autoplay playsinline muted class="w-full h-full object-cover rounded-xl shadow-lg"></video>
         <canvas ref="canvas" class="absolute top-0 left-0 w-full h-full"></canvas>
+        <transition name="fade">
+          <div v-if="spokenText" class="absolute bottom-2 left-1/2 transform -translate-x-1/2 bg-black/70 px-4 py-2 rounded-lg text-sm text-center">
+            {{ spokenText }}
+          </div>
+        </transition>
       </div>
 
       <!-- Panel Kontrol -->
@@ -61,6 +66,10 @@ let detector = null
 let stream = null
 let audioEnabled = ref(false)
 
+// Gesture & smoothing
+const lastKeypoints = []
+const gestureState = ref({ handUp:false, wave:false, nod:false })
+let prevRightWristX = 0
 const myInfo = 'Halo semuanya! Perkenalkan, saya Hilal Abdilah, mahasiswa baru Teknik Informatika. Senang bertemu dengan kalian semua!'
 
 function loadVoices() {
@@ -87,6 +96,19 @@ function speak(text){
   utter.rate=0.95
   utter.pitch=1.05
   window.speechSynthesis.speak(utter)
+  spokenText.value = text
+  utter.onend = ()=>{ spokenText.value = '' }
+}
+
+function showConfetti(){
+  for(let i=0;i<15;i++){
+    const c=document.createElement('div')
+    c.classList.add('confetti')
+    c.style.left = Math.random()*window.innerWidth+'px'
+    c.style.backgroundColor=`hsl(${Math.random()*360},70%,60%)`
+    document.body.appendChild(c)
+    setTimeout(()=>document.body.removeChild(c),2000)
+  }
 }
 
 async function setupCamera() {
@@ -124,11 +146,27 @@ async function initTF(){
   catch{ await tf.setBackend('cpu'); await tf.ready() } }
 }
 
+// smoothing 3 frame
+function smoothKeypoints(keypoints){
+  lastKeypoints.push(keypoints)
+  if(lastKeypoints.length>3) lastKeypoints.shift()
+  return keypoints.map((p,i)=>{
+    let x=0,y=0,count=0
+    for(const frame of lastKeypoints){
+      if(frame[i]){
+        x+=frame[i].x; y+=frame[i].y; count++
+      }
+    }
+    return {x:x/count, y:y/count, name:p.name}
+  })
+}
+
+// draw skeleton & keypoints
 function drawKeypoints(keypoints){
   if(!ctx.value) return
   ctx.value.clearRect(0,0,canvas.value.width,canvas.value.height)
 
-  // Draw lines (skeleton)
+  // skeleton connections
   const skeleton = [
     ['left_shoulder','right_shoulder'],
     ['left_shoulder','left_elbow'],
@@ -156,7 +194,7 @@ function drawKeypoints(keypoints){
     }
   })
 
-  // Draw keypoints
+  // draw keypoints
   keypoints.forEach(k=>{
     ctx.value.fillStyle='red'
     ctx.value.beginPath()
@@ -165,13 +203,55 @@ function drawKeypoints(keypoints){
   })
 }
 
+// detect gestures
+function detectGestures(keypoints){
+  const leftWrist = keypoints.find(p=>p.name==='left_wrist')
+  const rightWrist = keypoints.find(p=>p.name==='right_wrist')
+  const leftShoulder = keypoints.find(p=>p.name==='left_shoulder')
+  const rightShoulder = keypoints.find(p=>p.name==='right_shoulder')
+  const nose = keypoints.find(p=>p.name==='nose')
+  const leftEye = keypoints.find(p=>p.name==='left_eye')
+  const rightEye = keypoints.find(p=>p.name==='right_eye')
+
+  // angkat tangan
+  if(leftWrist && rightWrist && leftShoulder && rightShoulder){
+    if(!gestureState.value.handUp && (leftWrist.y<leftShoulder.y || rightWrist.y<rightShoulder.y)){
+      gestureState.value.handUp=true
+      speak(myInfo)
+      showConfetti()
+    }
+  }
+
+  // wave tangan
+  if(rightWrist){
+    const deltaX = rightWrist.x - prevRightWristX
+    if(!gestureState.value.wave && Math.abs(deltaX)>50){
+      gestureState.value.wave=true
+      speak('Himatika! Kita pasti bisa!')
+      showConfetti()
+    }
+    prevRightWristX = rightWrist.x
+  }
+
+  // geleng kepala
+  if(nose && leftEye && rightEye){
+    const angle = Math.atan2(rightEye.y-leftEye.y, rightEye.x-leftEye.x) * 180/Math.PI
+    if(!gestureState.value.nod && Math.abs(angle)>15){
+      gestureState.value.nod=true
+      speak('Terima kasih, sampai jumpa!')
+      showConfetti()
+    }
+  }
+}
+
 async function runDetection(){
   if(!detector || !cameraOn.value) return
   try{
     const poses = await detector.estimatePoses(video.value)
     if(poses.length>0){
-      const keypoints = poses[0].keypoints.map(k=>({x:k.x, y:k.y, name:k.name}))
+      const keypoints = smoothKeypoints(poses[0].keypoints.map(k=>({x:k.x, y:k.y, name:k.name})))
       drawKeypoints(keypoints)
+      detectGestures(keypoints)
     }
   }catch(e){console.warn(e)}
   requestAnimationFrame(runDetection)
@@ -190,4 +270,8 @@ onMounted(()=>{
 <style scoped>
 video { border-radius:1rem; width:100%; height:100%; object-fit:cover; }
 canvas { border-radius:1rem; width:100%; height:100%; pointer-events:none; }
+.confetti { position:fixed; width:8px; height:8px; border-radius:50%; animation:fall 2s linear forwards; pointer-events:none; }
+@keyframes fall { to{ transform:translateY(100vh) rotate(720deg); opacity:0; } }
+.fade-enter-active,.fade-leave-active{transition:opacity 0.5s;}
+.fade-enter-from,.fade-leave-to{opacity:0;}
 </style>
