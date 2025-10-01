@@ -70,6 +70,10 @@ const gestureState = ref({ handUp: false, wave: false })
 let prevRightWristX = 0
 const myInfo = 'Halo semuanya! Perkenalkan, saya Hilal Abdilah, mahasiswa baru Teknik Informatika. Senang bertemu dengan kalian semua!'
 
+// Untuk smoothing jari tangan
+const lastLeftHand = ref([])
+const lastRightHand = ref([])
+
 /** Load Voices & Setup TTS **/
 function loadVoices() {
   voices.value = speechSynthesis.getVoices()
@@ -126,16 +130,24 @@ async function setupCamera() {
   video.value.srcObject = stream
 }
 
-/** Draw Keypoints & Skeleton including Hands **/
+/** Draw Keypoints & Skeleton including Hands with smoothing **/
 function drawKeypoints(results){
   if(!ctx.value) return
   ctx.value.clearRect(0,0,canvas.value.width,canvas.value.height)
   const scaleX = canvas.value.width / video.value.videoWidth
   const scaleY = canvas.value.height / video.value.videoHeight
 
+  const smoothLandmarks = (landmarks,lastLandmarks)=>{
+    if(!landmarks) return []
+    if(!lastLandmarks.value.length) return landmarks
+    return landmarks.map((lm,i)=>({
+      x: lm.x*0.5 + lastLandmarks.value[i].x*0.5,
+      y: lm.y*0.5 + lastLandmarks.value[i].y*0.5
+    }))
+  }
+
   const drawLandmarks = (landmarks,color='red',connections=[]) => {
     if(!landmarks) return
-    // draw lines
     connections.forEach(([i,j])=>{
       if(landmarks[i] && landmarks[j]){
         ctx.value.strokeStyle=color
@@ -146,7 +158,6 @@ function drawKeypoints(results){
         ctx.value.stroke()
       }
     })
-    // draw points
     for(const lm of landmarks){
       ctx.value.beginPath()
       ctx.value.arc(lm.x*scaleX,lm.y*scaleY,2,0,2*Math.PI)
@@ -163,9 +174,14 @@ function drawKeypoints(results){
     [0,17],[17,18],[18,19],[19,20]
   ]
 
+  const leftHand = smoothLandmarks(results.leftHandLandmarks,lastLeftHand)
+  const rightHand = smoothLandmarks(results.rightHandLandmarks,lastRightHand)
+  lastLeftHand.value = leftHand
+  lastRightHand.value = rightHand
+
   drawLandmarks(results.poseLandmarks,'lime')
-  drawLandmarks(results.leftHandLandmarks,'yellow',handConnections)
-  drawLandmarks(results.rightHandLandmarks,'yellow',handConnections)
+  drawLandmarks(leftHand,'yellow',handConnections)
+  drawLandmarks(rightHand,'yellow',handConnections)
 }
 
 /** Detect Gestures **/
