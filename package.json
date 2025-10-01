@@ -1,12 +1,19 @@
 {
-  "name": "perkenalan-fullscreen",
+  "name": "nuxt-gesture-app",
   "version": "1.0.0",
+  "private": true,
   "scripts": {
     "dev": "nuxt dev",
     "build": "nuxt build",
+    "start": "nuxt start",
+    "generate": "nuxt generate",
     "preview": "nuxt preview"
   },
   "dependencies": {
-    "nuxt": "^3.19.1"
+    "nuxt": "latest",
+    "vue": "^3.4.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
   }
 }
