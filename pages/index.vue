@@ -1,5 +1,9 @@
 <template>
-  <WebcamGesture />
+  <div class="p-4">
+    <client-only>
+      <WebcamGesture />
+    </client-only>
+  </div>
 </template>
 
 <script setup>
