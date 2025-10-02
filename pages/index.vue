@@ -1,6 +1,6 @@
 <template>
   <div class="home">
-    <h1 class="title">👋 Gesture Detection Demo</h1>
+    <h1 class="title">👋 HILAL</h1>
     <client-only>
       <WebcamGesture />
     </client-only>
