@@ -85,10 +85,11 @@
         </div>
 
         <!-- Debug -->
-        <div class="debug">
+        <div class="debug" v-if="showDebug">
           <small>Debug: onResultsCalled: {{ debug.onResultsCalled ? 'Ya' : 'Tidak' }} | Pose: {{ debug.poseLandmarks ? 'Ada' : 'Tidak' }}</small>
           <div v-if="debug.lastError" style="color:red">{{ debug.lastError }}</div>
         </div>
+        <button @click="showDebug=!showDebug" class="debug-toggle">Toggle Debug</button>
       </div>
     </div>
   </div>
@@ -109,7 +110,7 @@ const leftFingerStatus = ref('')
 
 const showSkeleton = ref(true)
 const audioEnabled = ref(true)
-const error = ref('')
+const showDebug = ref(false)
 
 const debug = ref({
   onResultsCalled: false,
@@ -122,7 +123,7 @@ const debug = ref({
 let holistic = null
 let camera = null
 let localStream = null
-let cooldown = {}
+let cooldown = { left:{}, right:{} }
 const COOLDOWN_MS = 900
 
 /* ========= Camera Devices ========= */
@@ -141,8 +142,9 @@ async function enumerateVideoDevices(){
 async function startCamera(deviceId){
   stopCamera()
   try {
-    const constraints = deviceId ? { video: { deviceId: { exact: deviceId }, width: 480, height: 360 } }
-                                : { video: { facingMode: 'user', width: 480, height: 360 } }
+    const constraints = deviceId 
+      ? { video: { deviceId: { exact: deviceId }, width: 480, height: 360 } }
+      : { video: { facingMode: { ideal: 'user' }, width: 480, height: 360 } }
     localStream = await navigator.mediaDevices.getUserMedia(constraints)
     videoRef.value.srcObject = localStream
     await videoRef.value.play()
@@ -161,8 +163,8 @@ async function switchCamera(){ await startCamera(selectedDeviceId.value) }
 
 /* ========= Canvas ========= */
 function adaptCanvas(){
-  const w = videoRef.value.videoWidth || 480
-  const h = videoRef.value.videoHeight || 360
+  const w = videoRef.value.clientWidth || 480
+  const h = videoRef.value.clientHeight || 360
   canvasRef.value.width = w
   canvasRef.value.height = h
   ctx.value = canvasRef.value.getContext('2d')
@@ -175,14 +177,15 @@ const selectedVoiceURI = ref(null)
 
 function loadVoices(){
   voices.value = window.speechSynthesis.getVoices() || []
-}
-
-function updateVoiceList(){
-  loadVoices()
   const match = voices.value.find(x=>x.lang.startsWith(lang.value))
   if(match) selectedVoiceURI.value = match.voiceURI
 }
 
+if('speechSynthesis' in window){
+  window.speechSynthesis.onvoiceschanged = loadVoices
+}
+
+/* ========= Functions ========= */
 function speakText(text){
   if(!audioEnabled.value) return
   const u = new SpeechSynthesisUtterance(text)
@@ -207,8 +210,7 @@ function overlayTemporary(text, ms=1800){
 }
 
 /* ========= Gesture ========= */
-const customGestures = ref({}) // { gestureName: "text/audio" }
-
+const customGestures = ref({})
 const TIP = { thumb:4, index:8, middle:12, ring:16, pinky:20 }
 const PIP = { thumb:3, index:6, middle:10, ring:14, pinky:18 }
 const MCP = { thumb:2, index:5, middle:9, ring:13, pinky:17 }
@@ -226,22 +228,22 @@ function fingerStatusString(hand){
   return ['thumb','index','middle','ring','pinky'].map(f=>(isFingerExtended(hand,f)?f[0].toUpperCase()+f.slice(1):'-'+f[0])).join(', ')
 }
 
-function tryTrigger(name, fn){
+function tryTrigger(hand, name, fn){
   const now = Date.now()
-  if(!cooldown[name] || now-cooldown[name]>COOLDOWN_MS){
-    cooldown[name] = now
+  if(!cooldown[hand][name] || now-cooldown[hand][name]>COOLDOWN_MS){
+    cooldown[hand][name] = now
     fn()
   }
 }
 
 function detectFingerGestures(left,right){
   if(right){
-    if(isFingerExtended(right,'thumb') && !isFingerExtended(right,'index')) tryTrigger('thumbs_right',()=>{ triggerGesture('Thumbs Right') })
-    if(isFingerExtended(right,'index') && !isFingerExtended(right,'middle')) tryTrigger('point_right',()=>{ triggerGesture('Point Right') })
+    if(isFingerExtended(right,'thumb') && !isFingerExtended(right,'index')) tryTrigger('right','thumbs_right',()=>{ triggerGesture('Thumbs Right') })
+    if(isFingerExtended(right,'index') && !isFingerExtended(right,'middle')) tryTrigger('right','point_right',()=>{ triggerGesture('Point Right') })
   }
   if(left){
-    if(isFingerExtended(left,'thumb') && !isFingerExtended(left,'index')) tryTrigger('thumbs_left',()=>{ triggerGesture('Thumbs Left') })
-    if(isFingerExtended(left,'index') && !isFingerExtended(left,'middle')) tryTrigger('point_left',()=>{ triggerGesture('Point Left') })
+    if(isFingerExtended(left,'thumb') && !isFingerExtended(left,'index')) tryTrigger('left','thumbs_left',()=>{ triggerGesture('Thumbs Left') })
+    if(isFingerExtended(left,'index') && !isFingerExtended(left,'middle')) tryTrigger('left','point_left',()=>{ triggerGesture('Point Left') })
   }
 }
 
@@ -309,8 +311,6 @@ onMounted(async ()=>{
       width:480, height:360
     })
     camera.start()
-
-    if('speechSynthesis' in window){ loadVoices(); setTimeout(loadVoices,500) }
   } catch(e){ debug.value.lastError = e.message }
 })
 
@@ -319,6 +319,7 @@ onBeforeUnmount(()=>{ stopCamera() })
 /* ========= Template exposed ========= */
 function toggleSkeleton(){ showSkeleton.value = !showSkeleton.value }
 function toggleAudio(){ audioEnabled.value = !audioEnabled.value }
+
 function takeScreenshot(){
   const link = document.createElement('a')
   link.download = `gesture-${Date.now()}.png`
@@ -326,9 +327,7 @@ function takeScreenshot(){
   link.click()
 }
 
-function simulate(name){
-  triggerGesture(`Simulasi: ${name}`)
-}
+function simulate(name){ triggerGesture(`Simulasi: ${name}`) }
 
 const customGestureName = ref('')
 const customGestureText = ref('')
@@ -349,4 +348,13 @@ const customGestureText = ref('')
 .sim-buttons button{ background:#10b981; margin-right:4px }
 .status{ margin-top:6px; font-size:13px }
 .debug{ margin-top:8px; color:#666; font-size:12px }
+.debug-toggle{ margin-top:6px; background:#ff6600; }
+@media (max-width:600px){
+  .top-row{ flex-direction:column; }
+  .panel{ width:100%; }
+  .overlay-text{ font-size:14px; padding:4px 8px; }
+  .control-row label{ min-width:80px; font-size:12px }
+  .control-row button,.control-row input,.control-row select{ font-size:12px; padding:4px 6px }
+  .sim-buttons button{ margin-bottom:4px; font-size:12px }
+}
 </style>
