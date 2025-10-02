@@ -1,6 +1,8 @@
 <template>
   <div class="gesture-container">
-    <h2>👋 Gesture Detection</h2>
+    <h2>🤖 Pose & Gesture Detection</h2>
+
+    <!-- Video + Canvas -->
     <div class="video-wrapper">
       <video ref="videoRef" autoplay playsinline muted></video>
       <canvas ref="canvasRef"></canvas>
@@ -13,22 +15,32 @@
 
       <p>Last Gesture: <strong>{{ lastGesture }}</strong></p>
 
-      <div class="audio-input">
-        <input v-model="customText" type="text" placeholder="Teks audio custom..." />
-        <button @click="playAudio(customText)">🔊 Play</button>
+      <!-- Custom Mapping Input -->
+      <div class="gesture-mapping">
+        <h3>🎛️ Atur Gesture & Audio</h3>
+        <div v-for="(text, gesture) in gestureMap" :key="gesture" class="mapping-row">
+          <label>{{ gesture }}</label>
+          <input v-model="gestureMap[gesture]" placeholder="Teks audio..." />
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
 
 const videoRef = ref(null)
 const canvasRef = ref(null)
 const error = ref(null)
 const lastGesture = ref("None")
-const customText = ref("Halo, ini contoh audio")
+
+// Mapping default gesture → audio custom
+const gestureMap = reactive({
+  "Right Hand Up": "Halo, tangan kanan diangkat",
+  "Left Hand Up": "Hai, tangan kiri diangkat",
+  "Both Hands Up": "Kedua tangan terangkat!"
+})
 
 let holistic = null
 let camera = null
@@ -36,7 +48,7 @@ let camera = null
 onMounted(async () => {
   try {
     if (!window.Holistic || !window.Camera) {
-      error.value = "❌ MediaPipe tidak ter-load. Pastikan nuxt.config.ts sudah ada CDN script."
+      error.value = "❌ MediaPipe tidak ter-load. Tambahkan CDN script di nuxt.config.ts"
       return
     }
 
@@ -58,8 +70,8 @@ onMounted(async () => {
       onFrame: async () => {
         await holistic.send({ image: videoRef.value })
       },
-      width: 640,
-      height: 480,
+      width: 480,
+      height: 360,
     })
 
     camera.start()
@@ -84,25 +96,63 @@ function onResults(results) {
   ctx.clearRect(0, 0, canvas.width, canvas.height)
   ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height)
 
+  // === Pose Landmarks (tubuh) ===
   if (results.poseLandmarks) {
     window.drawConnectors(ctx, results.poseLandmarks, window.POSE_CONNECTIONS,
-      { color: "#00FF00", lineWidth: 3 })
+      { color: "#00FF00", lineWidth: 2 })
     window.drawLandmarks(ctx, results.poseLandmarks, { color: "#FF0000", lineWidth: 2 })
+  }
+
+  // === Face Landmarks ===
+  if (results.faceLandmarks) {
+    window.drawConnectors(ctx, results.faceLandmarks, window.FACEMESH_TESSELATION,
+      { color: "#C0C0C0", lineWidth: 0.5 })
+  }
+
+  // === Left Hand Landmarks ===
+  if (results.leftHandLandmarks) {
+    window.drawConnectors(ctx, results.leftHandLandmarks, window.HAND_CONNECTIONS,
+      { color: "#FFAA00", lineWidth: 2 })
+    window.drawLandmarks(ctx, results.leftHandLandmarks, { color: "#FF0000", lineWidth: 2 })
+  }
+
+  // === Right Hand Landmarks ===
+  if (results.rightHandLandmarks) {
+    window.drawConnectors(ctx, results.rightHandLandmarks, window.HAND_CONNECTIONS,
+      { color: "#00AAFF", lineWidth: 2 })
+    window.drawLandmarks(ctx, results.rightHandLandmarks, { color: "#0000FF", lineWidth: 2 })
   }
 
   ctx.restore()
 
-  // Contoh gesture: tangan kanan diangkat
-  if (results.poseLandmarks) {
-    const rightWrist = results.poseLandmarks[16]
-    const rightShoulder = results.poseLandmarks[12]
+  // === Deteksi Gesture sederhana ===
+  detectGesture(results)
+}
 
-    if (rightWrist && rightShoulder && rightWrist.y < rightShoulder.y) {
-      if (lastGesture.value !== "Right Hand Up") {
-        lastGesture.value = "Right Hand Up"
-        playAudio("Tangan kanan diangkat")
-      }
-    }
+function detectGesture(results) {
+  if (!results.poseLandmarks) return
+
+  const rightWrist = results.poseLandmarks[16]
+  const rightShoulder = results.poseLandmarks[12]
+  const leftWrist = results.poseLandmarks[15]
+  const leftShoulder = results.poseLandmarks[11]
+
+  let gesture = null
+
+  if (rightWrist && rightShoulder && rightWrist.y < rightShoulder.y) {
+    gesture = "Right Hand Up"
+  } else if (leftWrist && leftShoulder && leftWrist.y < leftShoulder.y) {
+    gesture = "Left Hand Up"
+  } else if (
+    rightWrist && rightShoulder && leftWrist && leftShoulder &&
+    rightWrist.y < rightShoulder.y && leftWrist.y < leftShoulder.y
+  ) {
+    gesture = "Both Hands Up"
+  }
+
+  if (gesture && lastGesture.value !== gesture) {
+    lastGesture.value = gesture
+    playAudio(gestureMap[gesture])
   }
 }
 
@@ -123,54 +173,52 @@ function playAudio(text) {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 16px;
+  padding: 12px;
 }
 .video-wrapper {
   position: relative;
-  width: 640px;
-  height: 480px;
+  width: 100%;
+  max-width: 480px;
+  aspect-ratio: 4/3;
 }
 video, canvas {
   position: absolute;
   top: 0;
   left: 0;
-  width: 640px;
-  height: 480px;
+  width: 100%;
+  height: 100%;
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
 .control-panel {
   margin-top: 12px;
   padding: 12px;
-  background: #f4f4f4;
+  background: #f9f9f9;
   border-radius: 8px;
-  width: 320px;
-  text-align: center;
+  width: 100%;
+  max-width: 480px;
 }
 .error {
   color: red;
   font-weight: bold;
 }
-.audio-input {
+.gesture-mapping {
   margin-top: 10px;
-  display: flex;
-  gap: 6px;
 }
-.audio-input input {
+.mapping-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.mapping-row label {
   flex: 1;
-  padding: 6px;
+  font-size: 14px;
+}
+.mapping-row input {
+  flex: 2;
+  padding: 4px 6px;
   border: 1px solid #ccc;
   border-radius: 6px;
-}
-.audio-input button {
-  padding: 6px 10px;
-  background: #0070f3;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-}
-.audio-input button:hover {
-  background: #0055aa;
 }
 </style>
