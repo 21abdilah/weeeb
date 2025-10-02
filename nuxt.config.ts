@@ -32,7 +32,7 @@ export default defineNuxtConfig({
   },
 
   css: [
-    "@/assets/main.css"
+    "@/assets/css/global.css"
   ],
 
   build: {
