@@ -1,9 +1,9 @@
 <template>
   <div class="home">
-    <h1 class="title">👋 HILAL</h1>
-    <client-only>
+    <h1 class="title">👋</h1>
+    <ClientOnly fallback="<p>Loading camera...</p>">
       <WebcamGesture />
-    </client-only>
+    </ClientOnly>
   </div>
 </template>
 
