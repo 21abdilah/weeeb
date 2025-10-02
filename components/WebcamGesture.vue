@@ -12,7 +12,6 @@
       <div class="panel">
         <h3>⚙️ Kontrol</h3>
 
-        <!-- Kamera -->
         <div class="control-row">
           <label>Kamera:</label>
           <select v-model="selectedDeviceId" @change="switchCamera">
@@ -22,12 +21,11 @@
           </select>
         </div>
 
-        <!-- Bahasa & Voice -->
         <div class="control-row">
           <label>Bahasa:</label>
           <select v-model="lang" @change="updateVoiceList">
-            <option value="id-ID">Indonesia (id-ID)</option>
-            <option value="en-US">English (en-US)</option>
+            <option value="id-ID">Indonesia</option>
+            <option value="en-US">English</option>
           </select>
         </div>
 
@@ -45,7 +43,6 @@
           <button @click="toggleAudio">{{ audioEnabled ? '🔇 Matikan Suara' : '🔊 Aktifkan Suara' }}</button>
         </div>
 
-        <!-- Skeleton & Screenshot -->
         <div class="control-row">
           <button @click="toggleSkeleton">{{ showSkeleton ? 'Sembunyikan Skeleton' : 'Tampilkan Skeleton' }}</button>
           <button @click="takeScreenshot">📸 Screenshot</button>
@@ -53,38 +50,12 @@
 
         <hr />
 
-        <!-- Simulasi Gesture -->
-        <div class="control-row">
-          <label>Simulasi Gesture:</label>
-          <div class="sim-buttons">
-            <button @click="simulate('thumbs')">👍 Jempol</button>
-            <button @click="simulate('point')">☝️ Menunjuk</button>
-            <button @click="simulate('wave')">👋 Lambaian</button>
-            <button @click="simulate('nod')">🙆 Angguk</button>
-            <button @click="simulate('shake')">🙅 Geleng</button>
-          </div>
-        </div>
-
-        <hr />
-
-        <!-- Custom Gesture -->
-        <div class="control-row">
-          <label>Custom Gesture:</label>
-          <input v-model="customGestureName" placeholder="Nama Gesture"/>
-          <input v-model="customGestureText" placeholder="Text/Audio"/>
-          <button @click="saveCustomGesture">💾 Simpan</button>
-        </div>
-
-        <hr />
-
-        <!-- Status -->
         <div class="status">
           <div><strong>Last Gesture:</strong> {{ detectedGesture || '-' }}</div>
           <div><strong>Right Finger:</strong> {{ rightFingerStatus || '-' }}</div>
           <div><strong>Left Finger:</strong> {{ leftFingerStatus || '-' }}</div>
         </div>
 
-        <!-- Debug -->
         <div class="debug" v-if="showDebug">
           <small>Debug: onResultsCalled: {{ debug.onResultsCalled ? 'Ya' : 'Tidak' }} | Pose: {{ debug.poseLandmarks ? 'Ada' : 'Tidak' }}</small>
           <div v-if="debug.lastError" style="color:red">{{ debug.lastError }}</div>
@@ -185,7 +156,6 @@ if('speechSynthesis' in window){
   window.speechSynthesis.onvoiceschanged = loadVoices
 }
 
-/* ========= Functions ========= */
 function speakText(text){
   if(!audioEnabled.value) return
   const u = new SpeechSynthesisUtterance(text)
@@ -210,7 +180,6 @@ function overlayTemporary(text, ms=1800){
 }
 
 /* ========= Gesture ========= */
-const customGestures = ref({})
 const TIP = { thumb:4, index:8, middle:12, ring:16, pinky:20 }
 const PIP = { thumb:3, index:6, middle:10, ring:14, pinky:18 }
 const MCP = { thumb:2, index:5, middle:9, ring:13, pinky:17 }
@@ -223,9 +192,12 @@ function isFingerExtended(hand,f){
   return Math.abs(tip.x-mcp.x)>0.04 && Math.abs(tip.x-mcp.x)>Math.abs(tip.y-mcp.y)*0.6
 }
 
-function fingerStatusString(hand){ 
-  if(!hand) return '-'
-  return ['thumb','index','middle','ring','pinky'].map(f=>(isFingerExtended(hand,f)?f[0].toUpperCase()+f.slice(1):'-'+f[0])).join(', ')
+function countExtendedFingers(hand){
+  if(!hand) return 0
+  return ['thumb','index','middle','ring','pinky'].reduce((acc,f)=>{
+    if(isFingerExtended(hand,f)) return acc+1
+    return acc
+  },0)
 }
 
 function tryTrigger(hand, name, fn){
@@ -236,27 +208,31 @@ function tryTrigger(hand, name, fn){
   }
 }
 
-function detectFingerGestures(left,right){
+/* Perkenalan berdasarkan jumlah jari */
+const perkenalanGestures = {
+  1: 'Halo, saya Hilal Abdilah!',
+  2: 'Saya tertarik dengan teknologi dan programming.',
+  3: 'Selamat datang di demo proyek saya!',
+  4: 'Saya selalu ingin belajar hal baru setiap hari.',
+  5: 'Terima kasih telah melihat demo saya!'
+}
+
+function detectFingerNumber(left,right){
   if(right){
-    if(isFingerExtended(right,'thumb') && !isFingerExtended(right,'index')) tryTrigger('right','thumbs_right',()=>{ triggerGesture('Thumbs Right') })
-    if(isFingerExtended(right,'index') && !isFingerExtended(right,'middle')) tryTrigger('right','point_right',()=>{ triggerGesture('Point Right') })
+    const n = countExtendedFingers(right)
+    tryTrigger('right',`finger_${n}`,()=> triggerGesture(`${n} jari`, perkenalanGestures[n]))
   }
   if(left){
-    if(isFingerExtended(left,'thumb') && !isFingerExtended(left,'index')) tryTrigger('left','thumbs_left',()=>{ triggerGesture('Thumbs Left') })
-    if(isFingerExtended(left,'index') && !isFingerExtended(left,'middle')) tryTrigger('left','point_left',()=>{ triggerGesture('Point Left') })
+    const n = countExtendedFingers(left)
+    tryTrigger('left',`finger_${n}`,()=> triggerGesture(`${n} jari`, perkenalanGestures[n]))
   }
 }
 
-function triggerGesture(name){
+function triggerGesture(name, text=null){
   detectedGesture.value = name
-  overlayTemporary(`✨ ${name}`)
-  if(customGestures.value[name]) speakText(customGestures.value[name])
-  else speakText(name)
-}
-
-function saveCustomGesture(){
-  if(customGestureName.value && customGestureText.value)
-    customGestures.value[customGestureName.value] = customGestureText.value
+  if(text) overlayTemporary(`✨ ${text}`)
+  else overlayTemporary(`✨ ${name}`)
+  if(text) speakText(text)
 }
 
 /* ========= OnResults ========= */
@@ -280,10 +256,10 @@ function onResults(results){
     if(results.faceLandmarks) window.drawLandmarks(ctx.value, results.faceLandmarks, {color:'#8888FF', lineWidth:0.5})
   }
 
-  rightFingerStatus.value = results.rightHandLandmarks ? fingerStatusString(results.rightHandLandmarks) : '-'
-  leftFingerStatus.value = results.leftHandLandmarks ? fingerStatusString(results.leftHandLandmarks) : '-'
+  rightFingerStatus.value = results.rightHandLandmarks ? countExtendedFingers(results.rightHandLandmarks) + ' jari' : '-'
+  leftFingerStatus.value = results.leftHandLandmarks ? countExtendedFingers(results.leftHandLandmarks) + ' jari' : '-'
 
-  detectFingerGestures(results.leftHandLandmarks, results.rightHandLandmarks)
+  detectFingerNumber(results.leftHandLandmarks, results.rightHandLandmarks)
 }
 
 /* ========= Init ========= */
@@ -291,7 +267,6 @@ onMounted(async ()=>{
   await enumerateVideoDevices()
   await startCamera(selectedDeviceId.value)
 
-  // wait for window.Holistic loaded
   const wait = () => new Promise(res=>{
     const check=()=>{
       if(window.Holistic && window.Camera) return res(true)
@@ -319,18 +294,12 @@ onBeforeUnmount(()=>{ stopCamera() })
 /* ========= Template exposed ========= */
 function toggleSkeleton(){ showSkeleton.value = !showSkeleton.value }
 function toggleAudio(){ audioEnabled.value = !audioEnabled.value }
-
 function takeScreenshot(){
   const link = document.createElement('a')
   link.download = `gesture-${Date.now()}.png`
   link.href = canvasRef.value.toDataURL('image/png')
   link.click()
 }
-
-function simulate(name){ triggerGesture(`Simulasi: ${name}`) }
-
-const customGestureName = ref('')
-const customGestureText = ref('')
 </script>
 
 <style scoped>
@@ -339,22 +308,15 @@ const customGestureText = ref('')
 .video-wrap{ position:relative; width:100%; max-width:480px }
 .video{ width:100%; border-radius:12px; background:#000 }
 .canvas{ position:absolute; top:0; left:0; width:100%; height:100%; border-radius:12px; pointer-events:none }
-.overlay-text{ position:absolute; left:50%; top:10%; transform:translateX(-50%); background:rgba(0,0,0,0.45); color:#fff; padding:6px 10px; border-radius:10px; font-weight:600; font-size:16px }
+.overlay-text{ position:absolute; left:50%; top:10%; transform:translateX(-50%); background:rgba(0,0,0,0.45); color:#fff; padding:6px 10px; border-radius:10px; font-weight:600; font-size:16px; text-align:center; word-break:break-word }
 .panel{ min-width:240px; padding:12px; background:#fff; border-radius:10px; box-shadow:0 4px 15px rgba(0,0,0,0.08) }
 .control-row{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin:6px 0 }
 .control-row label{ min-width:100px; font-size:13px }
-.control-row select,input{ padding:5px; border-radius:6px; border:1px solid #ccc }
-.control-row button{ padding:6px 8px; border-radius:6px; border:none; background:#0066ff; color:#fff; cursor:pointer }
+.control-row select
+,input{ padding:5px; border-radius:6px; border:1px solid #ccc; font-size:14px }
+.control-row button{ padding:6px 8px; border-radius:6px; border:none; background:#0066ff; color:#fff; cursor:pointer; font-size:14px }
 .sim-buttons button{ background:#10b981; margin-right:4px }
 .status{ margin-top:6px; font-size:13px }
 .debug{ margin-top:8px; color:#666; font-size:12px }
-.debug-toggle{ margin-top:6px; background:#ff6600; }
-@media (max-width:600px){
-  .top-row{ flex-direction:column; }
-  .panel{ width:100%; }
-  .overlay-text{ font-size:14px; padding:4px 8px; }
-  .control-row label{ min-width:80px; font-size:12px }
-  .control-row button,.control-row input,.control-row select{ font-size:12px; padding:4px 6px }
-  .sim-buttons button{ margin-bottom:4px; font-size:12px }
-}
+.debug-toggle{ margin-top:6px; padding:4px 8px; background:#ff9900; color:#fff; border-radius:6px; border:none; cursor:pointer; font-size:13px }
 </style>
