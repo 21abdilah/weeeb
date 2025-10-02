@@ -184,7 +184,7 @@ function speakText(text){
   window.speechSynthesis.speak(u)
 }
 
-function testVoice(){ ensureAudioUnlocked(); speakText(lang.value.startsWith('id') ? 'Halo, ini tes suara.' : 'Hello, this is a voice test.') }
+function testVoice(){ ensureAudioUnlocked(); speakText(lang.value.startsWith('id') ? 'HIDUP JOKOWI' : 'WIWOK THE TOK TOK TEH TOK NOT ONLY.') }
 
 /* ========== Gesture Detection Helpers ========== */
 const TIP = { thumb:4, index:8, middle:12, ring:16, pinky:20 }
