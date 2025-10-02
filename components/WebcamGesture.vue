@@ -200,15 +200,10 @@ function countExtendedFingers(hand){
   },0)
 }
 
-function tryTrigger(hand, name, fn){
-  const now = Date.now()
-  if(!cooldown[hand][name] || now-cooldown[hand][name]>COOLDOWN_MS){
-    cooldown[hand][name] = now
-    fn()
-  }
-}
+/* Cooldown per gesture untuk TTS sekali */
+let lastSpokenRight = null
+let lastSpokenLeft = null
 
-/* Perkenalan berdasarkan jumlah jari */
 const perkenalanGestures = {
   1: 'Halo, saya Hilal Abdilah!',
   2: 'Saya tertarik dengan teknologi dan programming.',
@@ -220,18 +215,25 @@ const perkenalanGestures = {
 function detectFingerNumber(left,right){
   if(right){
     const n = countExtendedFingers(right)
-    tryTrigger('right',`finger_${n}`,()=> triggerGesture(`${n} jari`, perkenalanGestures[n]))
+    rightFingerStatus.value = n+' jari'
+    if(n!==lastSpokenRight){
+      triggerGesture(`${n} jari`, perkenalanGestures[n])
+      lastSpokenRight = n
+    }
   }
   if(left){
     const n = countExtendedFingers(left)
-    tryTrigger('left',`finger_${n}`,()=> triggerGesture(`${n} jari`, perkenalanGestures[n]))
+    leftFingerStatus.value = n+' jari'
+    if(n!==lastSpokenLeft){
+      triggerGesture(`${n} jari`, perkenalanGestures[n])
+      lastSpokenLeft = n
+    }
   }
 }
 
 function triggerGesture(name, text=null){
   detectedGesture.value = name
-  if(text) overlayTemporary(`✨ ${text}`)
-  else overlayTemporary(`✨ ${name}`)
+  overlayTemporary(text || name)
   if(text) speakText(text)
 }
 
@@ -256,9 +258,6 @@ function onResults(results){
     if(results.faceLandmarks) window.drawLandmarks(ctx.value, results.faceLandmarks, {color:'#8888FF', lineWidth:0.5})
   }
 
-  rightFingerStatus.value = results.rightHandLandmarks ? countExtendedFingers(results.rightHandLandmarks) + ' jari' : '-'
-  leftFingerStatus.value = results.leftHandLandmarks ? countExtendedFingers(results.leftHandLandmarks) + ' jari' : '-'
-
   detectFingerNumber(results.leftHandLandmarks, results.rightHandLandmarks)
 }
 
@@ -271,6 +270,7 @@ onMounted(async ()=>{
     const check=()=>{
       if(window.Holistic && window.Camera) return res(true)
       setTimeout(check,50)
+      check()
     }
     check()
   })
