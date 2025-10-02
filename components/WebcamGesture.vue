@@ -205,11 +205,11 @@ let lastSpokenRight = null
 let lastSpokenLeft = null
 
 const perkenalanGestures = {
-  1: 'Halo, saya Hilal Abdilah!',
-  2: 'Saya tertarik dengan teknologi dan programming.',
-  3: 'Selamat datang di demo proyek saya!',
-  4: 'Saya selalu ingin belajar hal baru setiap hari.',
-  5: 'Terima kasih telah melihat demo saya!'
+  1: 'Hidup Jokowi!',
+  2: 'Hidup Jokowi',
+  3: 'Hidup Jokowi!',
+  4: 'Hidup Jokowi.',
+  5: 'Terima kasih!'
 }
 
 function detectFingerNumber(left,right){
