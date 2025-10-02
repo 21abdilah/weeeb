@@ -1,298 +1,192 @@
+<script setup>
+import { ref, onMounted, onBeforeUnmount } from "vue"
+import { Play, Square, Bug, Mic } from "lucide-vue-next" // pakai lucide-react versi vue
+
+const videoRef = ref(null)
+const canvasRef = ref(null)
+const running = ref(false)
+const lang = ref("id-ID")
+const drawLandmarks = ref(true)
+const debugMode = ref(true)
+const lastGesture = ref("—")
+
+// ✅ Mapping default gesture -> audio/text
+const gestureMap = ref({
+  wave: { text: "Halo!", lang: "id-ID" },
+  thumbsUp: { text: "Bagus sekali!", lang: "id-ID" },
+  leftHandUp: { text: "Saya di sini!", lang: "id-ID" }
+})
+
+let holistic, camera
+
+// ✅ Debug helper
+function debugError(context, error) {
+  console.error(`[${context}]`, error)
+  const panel = document.getElementById("debug-panel")
+  if (panel && debugMode.value) {
+    const el = document.createElement("div")
+    el.className = "error"
+    el.innerHTML = `<strong>${context}:</strong> ${error.message || error}`
+    panel.appendChild(el)
+    panel.scrollTop = panel.scrollHeight
+  }
+}
+
+// ✅ Text-to-Speech
+function speak(text, language = "id-ID") {
+  try {
+    const utter = new SpeechSynthesisUtterance(text)
+    utter.lang = language
+    window.speechSynthesis.speak(utter)
+  } catch (err) {
+    debugError("Speech", err)
+  }
+}
+
+// ✅ Gesture Detector (contoh sederhana)
+function detectGesture(results) {
+  if (results.rightHandLandmarks) return "wave"
+  if (results.leftHandLandmarks) return "leftHandUp"
+  if (results.poseLandmarks) {
+    const rightThumb = results.poseLandmarks[4]
+    if (rightThumb && rightThumb.y < 0.3) return "thumbsUp"
+  }
+  return null
+}
+
+// ✅ Init Holistic
+function initHolistic() {
+  holistic = new window.Holistic.Holistic({
+    locateFile: (file) =>
+      `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`,
+  })
+  holistic.setOptions({
+    modelComplexity: 1,
+    smoothLandmarks: true,
+    enableSegmentation: false,
+    refineFaceLandmarks: true,
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5,
+  })
+  holistic.onResults(onResults)
+}
+
+// ✅ Handle results
+function onResults(results) {
+  const canvas = canvasRef.value
+  const ctx = canvas.getContext("2d")
+  ctx.save()
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height)
+
+  if (drawLandmarks.value) {
+    const mp_drawing = window.drawConnectors
+    const mp_landmarks = window.drawLandmarks
+
+    if (results.poseLandmarks) {
+      mp_drawing(ctx, results.poseLandmarks, window.POSE_CONNECTIONS, { color: "#00FF00", lineWidth: 2 })
+      mp_landmarks(ctx, results.poseLandmarks, { color: "#FF0000", radius: 3 })
+    }
+
+    if (results.leftHandLandmarks) {
+      mp_drawing(ctx, results.leftHandLandmarks, window.HAND_CONNECTIONS, { color: "#FFCC00", lineWidth: 2 })
+      mp_landmarks(ctx, results.leftHandLandmarks, { color: "#FFFFFF", radius: 3 })
+    }
+    if (results.rightHandLandmarks) {
+      mp_drawing(ctx, results.rightHandLandmarks, window.HAND_CONNECTIONS, { color: "#FFCC00", lineWidth: 2 })
+      mp_landmarks(ctx, results.rightHandLandmarks, { color: "#FFFFFF", radius: 3 })
+    }
+
+    if (results.faceLandmarks) {
+      mp_landmarks(ctx, results.faceLandmarks, { color: "#00FFFF", radius: 1 })
+    }
+  }
+
+  // ✅ Gesture recognition + Audio
+  const detected = detectGesture(results)
+  if (detected && gestureMap.value[detected]) {
+    if (lastGesture.value !== detected) {
+      lastGesture.value = detected
+      speak(gestureMap.value[detected].text, gestureMap.value[detected].lang)
+    }
+  }
+
+  ctx.restore()
+}
+
+// ✅ Camera controls
+async function startCamera() {
+  const video = videoRef.value
+  camera = new window.Camera(video, {
+    onFrame: async () => {
+      await holistic.send({ image: video })
+    },
+    width: 640,
+    height: 480,
+  })
+  camera.start()
+  running.value = true
+}
+function stopCamera() {
+  if (camera) {
+    camera.stop()
+    running.value = false
+  }
+}
+
+onMounted(() => initHolistic())
+onBeforeUnmount(() => stopCamera())
+</script>
+
 <template>
-  <div class="gesture-root">
-    <div class="top-row">
-      <!-- Video + Canvas -->
-      <div class="video-wrap">
-        <video ref="video" class="video" autoplay playsinline muted></video>
-        <canvas ref="canvas" class="canvas"></canvas>
+  <div class="flex flex-col items-center gap-6 w-full max-w-3xl mx-auto">
+    
+    <!-- Live Camera Card -->
+    <div class="bg-gray-900 rounded-2xl shadow-xl p-4 relative w-full">
+      <h2 class="text-lg font-semibold text-white mb-2">Live Camera</h2>
+      <div class="relative w-full aspect-video rounded-lg overflow-hidden">
+        <video ref="videoRef" autoplay playsinline muted class="absolute w-full h-full object-cover"></video>
+        <canvas ref="canvasRef" width="640" height="480" class="absolute w-full h-full"></canvas>
       </div>
+      <div class="absolute top-2 right-2 bg-black/60 text-white px-3 py-1 rounded-lg text-sm">
+        Gesture: <span class="font-bold">{{ lastGesture }}</span>
+      </div>
+    </div>
 
-      <!-- Panel Control -->
-      <div class="panel">
-        <h3>⚙️ Kontrol Kamera & Overlay</h3>
+    <!-- Controls -->
+    <div class="flex gap-4">
+      <button @click="startCamera" :disabled="running"
+        class="px-4 py-2 rounded-full bg-green-600 hover:bg-green-700 text-white flex items-center gap-2">
+        <Play class="w-4 h-4"/> Start
+      </button>
+      <button @click="stopCamera" :disabled="!running"
+        class="px-4 py-2 rounded-full bg-red-600 hover:bg-red-700 text-white flex items-center gap-2">
+        <Square class="w-4 h-4"/> Stop
+      </button>
+    </div>
 
-        <!-- Kamera -->
-        <div class="control-row">
-          <label for="cameraSelect">🎥 Pilih Kamera</label>
-          <select id="cameraSelect" v-model="selectedDeviceId" @change="switchCamera">
-            <option v-for="cam in cameras" :key="cam.deviceId" :value="cam.deviceId">
-              {{ cam.label || 'Kamera ' + cam.deviceId }}
-            </option>
-          </select>
-        </div>
-
-        <!-- Toggle Overlay -->
-        <div class="control-row">
-          <label><input type="checkbox" v-model="showPose" /> Pose</label>
-          <label><input type="checkbox" v-model="showHands" /> Hands</label>
-          <label><input type="checkbox" v-model="showFace" /> Face</label>
-        </div>
-
-        <hr />
-
-        <!-- Status -->
-        <div class="status">
-          <div><strong>FPS:</strong> {{ fps }}</div>
-          <div><strong>Pose:</strong> {{ debug.poseLandmarks ? '✅ Ada' : '❌ Tidak' }}</div>
-          <div><strong>Tangan Kanan:</strong> {{ debug.rightHandLandmarks ? '✅ Ada' : '❌ Tidak' }}</div>
-          <div><strong>Tangan Kiri:</strong> {{ debug.leftHandLandmarks ? '✅ Ada' : '❌ Tidak' }}</div>
-          <div><strong>Wajah:</strong> {{ debug.faceLandmarks ? '✅ Ada' : '❌ Tidak' }}</div>
-        </div>
-
-        <hr />
-
-        <!-- Debug Error -->
-        <div class="debug">
-          <h4>🛑 Debug & Error</h4>
-          <small>onResults: {{ debug.onResultsCalled ? 'Ya' : 'Tidak' }}</small>
-
-          <div v-if="errorLogs.length" class="error-box">
-            <div v-for="(err, i) in errorLogs" :key="i" class="error-item">
-              <strong>[{{ err.time }}]</strong> {{ err.message }}
-            </div>
-          </div>
-          <div v-else class="no-error">✅ Tidak ada error</div>
+    <!-- Gesture Mapping -->
+    <div class="w-full bg-gray-800 p-4 rounded-xl shadow-md">
+      <h3 class="text-white font-semibold mb-3">Custom Gesture Mapping</h3>
+      <div class="space-y-3">
+        <div v-for="(data, key) in gestureMap" :key="key" class="flex items-center gap-3">
+          <span class="w-32 text-white font-medium capitalize">{{ key }}</span>
+          <input v-model="data.text" class="flex-1 px-3 py-2 rounded-md text-sm" />
+          <button @click="speak(data.text, data.lang)" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md flex items-center gap-1">
+            <Mic class="w-4 h-4"/> Test
+          </button>
         </div>
       </div>
     </div>
+
+    <!-- Debug Panel -->
+    <transition name="fade">
+      <div v-if="debugMode" id="debug-panel" class="bg-black/70 text-red-400 p-3 rounded-md w-full max-h-40 overflow-y-auto text-sm"></div>
+    </transition>
   </div>
 </template>
 
-<script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
-
-const video = ref(null)
-const canvas = ref(null)
-let ctx = null
-let holistic = null
-let camera = null
-
-// Debug + status
-const debug = ref({
-  onResultsCalled: false,
-  poseLandmarks: false,
-  rightHandLandmarks: false,
-  leftHandLandmarks: false,
-  faceLandmarks: false
-})
-
-// Error logs
-const errorLogs = ref([])
-
-function logError(msg) {
-  errorLogs.value.push({ time: new Date().toLocaleTimeString(), message: msg })
-  if (errorLogs.value.length > 5) errorLogs.value.shift() // simpan max 5 error terakhir
-  console.error("🔴 WebcamGesture Error:", msg)
-}
-
-// FPS counter
-const fps = ref(0)
-let lastTime = performance.now()
-let frameCount = 0
-
-// Kamera switching
-const cameras = ref([])
-const selectedDeviceId = ref(null)
-
-const showPose = ref(true)
-const showHands = ref(true)
-const showFace = ref(true)
-
-function adaptCanvas() {
-  const w = video.value.videoWidth || 640
-  const h = video.value.videoHeight || 480
-  canvas.value.width = w
-  canvas.value.height = h
-  ctx = canvas.value.getContext('2d')
-}
-
-function onResults(results) {
-  debug.value.onResultsCalled = true
-  debug.value.poseLandmarks = !!results.poseLandmarks
-  debug.value.rightHandLandmarks = !!results.rightHandLandmarks
-  debug.value.leftHandLandmarks = !!results.leftHandLandmarks
-  debug.value.faceLandmarks = !!results.faceLandmarks
-
-  // FPS calc
-  frameCount++
-  const now = performance.now()
-  if (now - lastTime >= 1000) {
-    fps.value = frameCount
-    frameCount = 0
-    lastTime = now
-  }
-
-  ctx.clearRect(0, 0, canvas.value.width, canvas.value.height)
-  ctx.drawImage(results.image, 0, 0, canvas.value.width, canvas.value.height)
-
-  if (window.drawConnectors && window.drawLandmarks) {
-    if (showPose.value && results.poseLandmarks) {
-      window.drawConnectors(ctx, results.poseLandmarks, window.POSE_CONNECTIONS, { color: '#00FF00', lineWidth: 2 })
-      window.drawLandmarks(ctx, results.poseLandmarks, { color: '#FF0000', lineWidth: 1 })
-    }
-    if (showHands.value && results.leftHandLandmarks) {
-      window.drawConnectors(ctx, results.leftHandLandmarks, window.HAND_CONNECTIONS, { color: '#FF8800', lineWidth: 2 })
-      window.drawLandmarks(ctx, results.leftHandLandmarks, { color: '#FFFF00', lineWidth: 1 })
-    }
-    if (showHands.value && results.rightHandLandmarks) {
-      window.drawConnectors(ctx, results.rightHandLandmarks, window.HAND_CONNECTIONS, { color: '#00FFFF', lineWidth: 2 })
-      window.drawLandmarks(ctx, results.rightHandLandmarks, { color: '#FF00FF', lineWidth: 1 })
-    }
-    if (showFace.value && results.faceLandmarks) {
-      window.drawLandmarks(ctx, results.faceLandmarks, { color: '#8888FF', lineWidth: 0.5 })
-    }
-  }
-}
-
-// 🔹 Kamera init
-async function initCamera() {
-  try {
-    const devices = await navigator.mediaDevices.enumerateDevices()
-    cameras.value = devices.filter(d => d.kind === 'videoinput')
-    if (!selectedDeviceId.value && cameras.value.length) {
-      selectedDeviceId.value = cameras.value[0].deviceId
-    }
-    await switchCamera()
-  } catch (e) {
-    logError("Gagal akses kamera: " + e.message)
-  }
-}
-
-async function switchCamera() {
-  if (!selectedDeviceId.value) return
-  if (camera && camera.stop) camera.stop()
-
-  try {
-    const constraints = {
-      video: { deviceId: { exact: selectedDeviceId.value }, width: 640, height: 480 }
-    }
-    const stream = await navigator.mediaDevices.getUserMedia(constraints)
-    video.value.srcObject = stream
-
-    camera = new window.Camera(video.value, {
-      onFrame: async () => {
-        try {
-          await holistic.send({ image: video.value })
-        } catch (e) {
-          logError("Holistic send() error: " + e.message)
-        }
-      },
-      width: 640,
-      height: 480
-    })
-    camera.start()
-  } catch (e) {
-    logError("Kamera gagal start: " + e.message)
-  }
-}
-
-onMounted(async () => {
-  await new Promise(resolve => {
-    const check = () => {
-      if (window.Holistic && window.Camera) return resolve(true)
-      setTimeout(check, 100)
-    }
-    check()
-  })
-
-  adaptCanvas()
-  window.addEventListener('resize', adaptCanvas)
-
-  try {
-    holistic = new window.Holistic.Holistic({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`
-    })
-    holistic.setOptions({
-      modelComplexity: 1,
-      smoothLandmarks: true,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5
-    })
-    holistic.onResults(onResults)
-  } catch (e) {
-    logError("Holistic init error: " + e.message)
-  }
-
-  await initCamera()
-})
-
-onBeforeUnmount(() => {
-  if (holistic && holistic.close) holistic.close()
-  if (camera && camera.stop) camera.stop()
-  window.removeEventListener('resize', adaptCanvas)
-})
-</script>
-
 <style scoped>
-.gesture-root {
-  padding: 16px;
-  max-width: 1100px;
-  margin: 0 auto;
-  font-family: Inter, Arial, sans-serif;
-}
-.top-row {
-  display: flex;
-  gap: 16px;
-  align-items: flex-start;
-  flex-wrap: wrap;
-}
-.video-wrap {
-  position: relative;
-  width: 640px;
-  max-width: 100%;
-}
-.video {
-  display: block;
-  width: 100%;
-  border-radius: 12px;
-  background: #000;
-}
-.canvas {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  border-radius: 12px;
-  pointer-events: none;
-}
-.panel {
-  min-width: 280px;
-  padding: 12px;
-  background: #fff;
-  border-radius: 10px;
-  box-shadow: 0 6px 20px rgba(0,0,0,0.08);
-}
-.control-row {
-  margin: 6px 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.status {
-  margin-top: 8px;
-  font-size: 14px;
-}
-.debug {
-  margin-top: 10px;
-  font-size: 13px;
-}
-.error-box {
-  margin-top: 6px;
-  background: #ffecec;
-  border: 1px solid #ffaaaa;
-  padding: 6px;
-  border-radius: 6px;
-  max-height: 120px;
-  overflow-y: auto;
-}
-.error-item {
-  color: #d8000c;
-  font-size: 13px;
-  margin-bottom: 4px;
-}
-.no-error {
-  color: #228b22;
-  font-size: 13px;
-}
+.fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>
