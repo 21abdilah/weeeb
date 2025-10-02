@@ -234,8 +234,8 @@ function detectHigherGestures(results){
   if(pose){
     const nose=pose[0]
     if(nose){
-      if(lastNoseY!==null&&Math.abs(nose.y-lastNoseY)>0.06) tryTrigger('nod',()=>{ detectedGesture.value='Angguk'; overlayTemporary('🙆 Angguk'); speakText(lang.value.startsWith('id')?'Ya':'Yes') })
-      if(lastNoseX!==null&&Math.abs(nose.x-lastNoseX)>0.1) tryTrigger('shake',()=>{ detectedGesture.value='Geleng'; overlayTemporary('🙅 Geleng'); speakText(lang.value.startsWith('id')?'Tidak':'No') })
+      if(lastNoseY!==null&&Math.abs(nose.y-lastNoseY)>0.06) tryTrigger('nod',()=>{ detectedGesture.value='Manawi'; overlayTemporary('🙆 Manawi'); speakText(lang.value.startsWith('id')?'Ya':'Yes') })
+      if(lastNoseX!==null&&Math.abs(nose.x-lastNoseX)>0.1) tryTrigger('shake',()=>{ detectedGesture.value='Theyang nyaho'; overlayTemporary('🙅 Theyang nyaho'); speakText(lang.value.startsWith('id')?'Tidak':'No') })
       lastNoseY=nose.y
       lastNoseX=nose.x
     }
