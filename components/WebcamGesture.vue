@@ -8,9 +8,9 @@
       </div>
 
       <div class="panel">
-        <h3>⚙️ Kontrol</h3>
+        <h3>⚙️ BEBENAH</h3>
         <div class="control-row">
-          <label>Cara Kamera:</label>
+          <label>HAREP/TUKANG:</label>
           <select v-model="selectedDeviceId" @change="switchCamera">
             <option v-for="d in videoDevices" :key="d.deviceId" :value="d.deviceId">
               {{ d.label || ('Camera ' + (videoDevices.indexOf(d)+1)) }}
@@ -36,25 +36,25 @@
         </div>
 
         <div class="control-row">
-          <button @click="testVoice">🔊 Test Suara</button>
-          <button @click="toggleAudio">{{ audioEnabled ? '🔇 Matikan Suara' : '🔊 Aktifkan Suara' }}</button>
+          <button @click="testVoice">🔊 ngadenge</button>
+          <button @click="toggleAudio">{{ audioEnabled ? '🔇 Sora paeh' : '🔊 Sora hirup' }}</button>
         </div>
 
         <div class="control-row">
-          <button @click="toggleSkeleton">{{ showSkeleton ? 'Sembunyikan Kerangka' : 'Tampilkan Kerangka' }}</button>
-          <button @click="takeScreenshot">📸 Screenshot</button>
+          <button @click="toggleSkeleton">{{ showSkeleton ? 'Sumputkeun Titik' : 'Tingalikeun Titik' }}</button>
+          <button @click="takeScreenshot">📸 SC</button>
         </div>
 
         <hr />
 
         <div class="control-row">
-          <label>Simulasi Gesture:</label>
+          <label>Conto :</label>
           <div class="sim-buttons">
             <button @click="simulate('thumbs')">👍 Jempol</button>
-            <button @click="simulate('point')">☝️ Menunjuk</button>
-            <button @click="simulate('wave')">👋 Lambaian</button>
-            <button @click="simulate('nod')">🙆 Angguk</button>
-            <button @click="simulate('shake')">🙅 Geleng</button>
+            <button @click="simulate('point')">☝️ Ngacung</button>
+            <button @click="simulate('wave')">👋 Dadah</button>
+            <button @click="simulate('nod')">🙆 Manawi</button>
+            <button @click="simulate('shake')">🙅 Thayang nyaho</button>
           </div>
         </div>
 
