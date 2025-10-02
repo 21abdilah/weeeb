@@ -1,5 +1,5 @@
 <template>
-  <div class="gesture-container">
+  <div class="geture-container">
     <h2>👋 Gesture Detection</h2>
     <div class="video-wrapper">
       <video ref="videoRef" autoplay playsinline muted></video>
