@@ -8,7 +8,7 @@
       </div>
 
       <div class="panel">
-        <h3>⚙️ Kontrol</h3>
+        <h3>⚙️ BEBENAH</h3>
 
         <div class="control-row">
           <label>Kamera:</label>
@@ -20,7 +20,7 @@
         </div>
 
         <div class="control-row">
-          <label>Bahasa:</label>
+          <label>Basa:</label>
           <select v-model="lang" @change="updateVoiceList">
             <option value="id-ID">Indonesia</option>
             <option value="en-US">English</option>
@@ -28,7 +28,7 @@
         </div>
 
         <div class="control-row">
-          <label>Voice:</label>
+          <label>Sora:</label>
           <select v-model="selectedVoiceURI">
             <option v-for="v in voicesFiltered" :key="v.voiceURI" :value="v.voiceURI">
               {{ v.name }} ({{ v.lang }})
@@ -37,19 +37,19 @@
         </div>
 
         <div class="control-row">
-          <button @click="testVoice">🔊 Test Suara</button>
-          <button @click="toggleAudio">{{ audioEnabled ? '🔇 Matikan Suara' : '🔊 Aktifkan Suara' }}</button>
+          <button @click="testVoice">🔊 tesson</button>
+          <button @click="toggleAudio">{{ audioEnabled ? '🔇 Sora paeh' : '🔊 Sora hirup' }}</button>
         </div>
 
         <div class="control-row">
           <label>Skeleton:</label>
-          <button @click="showSkeletonHands = !showSkeletonHands">{{ showSkeletonHands ? 'Tangan ✅' : 'Tangan ❌' }}</button>
-          <button @click="showSkeletonPose = !showSkeletonPose">{{ showSkeletonPose ? 'Pose ✅' : 'Pose ❌' }}</button>
-          <button @click="showSkeletonFace = !showSkeletonFace">{{ showSkeletonFace ? 'Wajah ✅' : 'Wajah ❌' }}</button>
+          <button @click="showSkeletonHands = !showSkeletonHands">{{ showSkeletonHands ? 'Panangan ✅' : 'Panangan ❌' }}</button>
+          <button @click="showSkeletonPose = !showSkeletonPose">{{ showSkeletonPose ? 'Rupa ✅' : 'Rupa ❌' }}</button>
+          <button @click="showSkeletonFace = !showSkeletonFace">{{ showSkeletonFace ? 'Rarai ✅' : 'Rarai ❌' }}</button>
         </div>
 
         <div class="control-row">
-          <button @click="takeScreenshot">📸 Screenshot</button>
+          <button @click="takeScreenshot">📸 SC</button>
         </div>
 
         <hr />
@@ -181,19 +181,31 @@ const PIP = { thumb:3, index:6, middle:10, ring:14, pinky:18 }
 const MCP = { thumb:2, index:5, middle:9, ring:13, pinky:17 }
 
 const fingerHistory = { left:[], right:[] }
-const HISTORY_LEN = 3
+const HISTORY_LEN = 5
 let lastSpokenRight = 0, lastSpokenLeft = 0
 const COOLDOWN_MS = 2000
 
+/* Hitung sudut antar sendi */
+function getAngle(a,b,c){
+  const ab = {x:b.x-a.x, y:b.y-a.y}
+  const cb = {x:b.x-c.x, y:b.y-c.y}
+  const dot = ab.x*cb.x + ab.y*cb.y
+  const mag = Math.hypot(ab.x,ab.y)*Math.hypot(cb.x,cb.y)
+  if(mag===0) return 0
+  return Math.acos(dot/mag)*(180/Math.PI)
+}
+
 function isFingerExtended(hand,f){
   if(!hand) return false
-  const tip = hand[TIP[f]], pip = hand[PIP[f]], mcp = hand[MCP[f]]
-  if(!tip||!pip||!mcp) return false
-  const deltaY = pip.y - tip.y
-  const deltaX = Math.abs(tip.x - mcp.x)
-  if(f!=='thumb') return deltaY > 0.02
-  const angle = Math.atan2(tip.y-mcp.y, tip.x-mcp.x)
-  return angle < -0.2
+  const mcp = hand[MCP[f]], pip = hand[PIP[f]], tip = hand[TIP[f]]
+  if(!mcp||!pip||!tip) return false
+  if(f==='thumb'){
+    const angle = Math.atan2(tip.y - mcp.y, tip.x - mcp.x)
+    return angle < -0.2
+  } else {
+    const angle = getAngle(mcp,pip,tip)
+    return angle > 160 // threshold jari lurus
+  }
 }
 
 function countExtendedFingers(hand){
@@ -205,7 +217,7 @@ function countExtendedFingers(hand){
 }
 
 /* Moving average filter */
-function filterHistory(handName, count){
+function filterHistory(handName,count){
   const hist = handName==='left' ? fingerHistory.left : fingerHistory.right
   hist.push(count)
   if(hist.length>HISTORY_LEN) hist.shift()
@@ -329,10 +341,4 @@ function takeScreenshot(){
 .status{margin-top:6px;font-size:13px}
 .debug{margin-top:8px;color:#666;font-size:12px}
 .debug-toggle{margin-top:6px;padding:4px 8px;background:#ff9900;color:#fff;border-radius:6px;border:none;cursor:pointer;font-size:13px}
-
-@media(max-width:480px){
-  .top-row{flex-direction:column;}
-  .panel{width:100%;}
-  .video-wrap{max-width:100%;}
-}
 </style>
