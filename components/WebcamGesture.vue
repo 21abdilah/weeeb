@@ -1,18 +1,15 @@
 <template>
   <div class="gesture-root">
     <div class="top-row">
-      <!-- Video & canvas -->
       <div class="video-wrap">
         <video ref="videoRef" class="video" autoplay playsinline muted></video>
         <canvas ref="canvasRef" class="canvas"></canvas>
         <div class="overlay-text" v-if="overlayText">{{ overlayText }}</div>
       </div>
 
-      <!-- Panel kontrol -->
       <div class="panel">
         <h3>⚙️ Kontrol</h3>
 
-        <!-- Kamera -->
         <div class="control-row">
           <label>Kamera:</label>
           <select v-model="selectedDeviceId" @change="switchCamera">
@@ -22,7 +19,6 @@
           </select>
         </div>
 
-        <!-- Bahasa & Voice -->
         <div class="control-row">
           <label>Bahasa:</label>
           <select v-model="lang" @change="updateVoiceList">
@@ -30,6 +26,7 @@
             <option value="en-US">English</option>
           </select>
         </div>
+
         <div class="control-row">
           <label>Voice:</label>
           <select v-model="selectedVoiceURI">
@@ -39,13 +36,11 @@
           </select>
         </div>
 
-        <!-- TTS -->
         <div class="control-row">
           <button @click="testVoice">🔊 Test Suara</button>
           <button @click="toggleAudio">{{ audioEnabled ? '🔇 Matikan Suara' : '🔊 Aktifkan Suara' }}</button>
         </div>
 
-        <!-- Toggle Skeleton -->
         <div class="control-row">
           <label>Skeleton:</label>
           <button @click="showSkeletonHands = !showSkeletonHands">{{ showSkeletonHands ? 'Tangan ✅' : 'Tangan ❌' }}</button>
@@ -59,14 +54,12 @@
 
         <hr />
 
-        <!-- Status -->
         <div class="status">
           <div><strong>Last Gesture:</strong> {{ detectedGesture || '-' }}</div>
           <div><strong>Right Finger:</strong> {{ rightFingerStatus || '-' }}</div>
           <div><strong>Left Finger:</strong> {{ leftFingerStatus || '-' }}</div>
         </div>
 
-        <!-- Debug -->
         <div class="debug" v-if="showDebug">
           <small>Debug: onResultsCalled: {{ debug.onResultsCalled ? 'Ya' : 'Tidak' }} | Hands: L={{ debug.leftHandLandmarks ? 'Ada' : 'Tidak' }}, R={{ debug.rightHandLandmarks ? 'Ada' : 'Tidak' }}</small>
           <div v-if="debug.lastError" style="color:red">{{ debug.lastError }}</div>
@@ -80,7 +73,7 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 
-/* ========= Refs & State ========= */
+/* ===== Refs & State ===== */
 const videoRef = ref(null)
 const canvasRef = ref(null)
 const ctx = ref(null)
@@ -92,30 +85,25 @@ const leftFingerStatus = ref('')
 
 const audioEnabled = ref(true)
 const showDebug = ref(false)
+const debug = ref({ onResultsCalled:false, leftHandLandmarks:false, rightHandLandmarks:false, lastError:'' })
 
-const debug = ref({
-  onResultsCalled: false,
-  leftHandLandmarks: false,
-  rightHandLandmarks: false,
-  lastError: ''
-})
-
-/* ========= Skeleton Toggle ========= */
+/* ===== Skeleton Toggle ===== */
 const showSkeletonHands = ref(true)
 const showSkeletonPose = ref(false)
 const showSkeletonFace = ref(false)
 
-/* ========= Camera ========= */
+/* ===== Camera ===== */
 let holistic = null
 let camera = null
 let localStream = null
 const videoDevices = ref([])
 const selectedDeviceId = ref(null)
 
+/* ===== Enumerate Devices ===== */
 async function enumerateVideoDevices(){
   try {
     const devices = await navigator.mediaDevices.enumerateDevices()
-    videoDevices.value = devices.filter(d => d.kind === 'videoinput')
+    videoDevices.value = devices.filter(d => d.kind==='videoinput')
     if(!selectedDeviceId.value && videoDevices.value.length)
       selectedDeviceId.value = videoDevices.value[0].deviceId
   } catch(e){ console.warn(e) }
@@ -124,9 +112,9 @@ async function enumerateVideoDevices(){
 async function startCamera(deviceId){
   stopCamera()
   try {
-    const constraints = deviceId 
-      ? { video: { deviceId: { exact: deviceId }, width: 320, height: 240, frameRate:{ideal:10} } }
-      : { video: { facingMode: { ideal: 'user' }, width: 320, height: 240, frameRate:{ideal:10} } }
+    const constraints = deviceId
+      ? { video:{ deviceId:{exact:deviceId}, width:480, height:360, frameRate:{ideal:15} } }
+      : { video:{ facingMode:{ideal:'user'}, width:480, height:360, frameRate:{ideal:15} } }
     localStream = await navigator.mediaDevices.getUserMedia(constraints)
     videoRef.value.srcObject = localStream
     await videoRef.value.play()
@@ -136,36 +124,33 @@ async function startCamera(deviceId){
 
 function stopCamera(){
   if(camera && camera.stop) camera.stop()
-  if(localStream) localStream.getTracks().forEach(t => t.stop())
+  if(localStream) localStream.getTracks().forEach(t=>t.stop())
   camera = null
   localStream = null
 }
 
 async function switchCamera(){ await startCamera(selectedDeviceId.value) }
 
-/* ========= Canvas ========= */
+/* ===== Canvas ===== */
 function adaptCanvas(){
-  const w = videoRef.value.clientWidth || 320
-  const h = videoRef.value.clientHeight || 240
+  const w = videoRef.value.clientWidth || 480
+  const h = videoRef.value.clientHeight || 360
   canvasRef.value.width = w
   canvasRef.value.height = h
   ctx.value = canvasRef.value.getContext('2d')
 }
 
-/* ========= TTS ========= */
+/* ===== TTS ===== */
 const lang = ref('id-ID')
 const voices = ref([])
 const selectedVoiceURI = ref(null)
 
 function loadVoices(){
   voices.value = window.speechSynthesis.getVoices() || []
-  const match = voices.value.find(x=>x.lang.startsWith(lang.value))
+  const match = voices.value.find(v=>v.lang.startsWith(lang.value))
   if(match) selectedVoiceURI.value = match.voiceURI
 }
-
-if('speechSynthesis' in window){
-  window.speechSynthesis.onvoiceschanged = loadVoices
-}
+if('speechSynthesis' in window) window.speechSynthesis.onvoiceschanged = loadVoices
 
 function speakText(text){
   if(!audioEnabled.value || window.speechSynthesis.speaking) return
@@ -182,25 +167,33 @@ function testVoice(){
 
 const voicesFiltered = computed(()=> voices.value.filter(v=>v.lang.startsWith(lang.value.split('-')[0])))
 
-/* ========= Overlay ========= */
+/* ===== Overlay ===== */
 let overlayTimer = null
 function overlayTemporary(text, ms=1800){
   overlayText.value = text
   if(overlayTimer) clearTimeout(overlayTimer)
-  overlayTimer = setTimeout(()=>{ overlayText.value = '' }, ms)
+  overlayTimer = setTimeout(()=> overlayText.value='', ms)
 }
 
-/* ========= Gesture Detection ========= */
+/* ===== Gesture Detection ===== */
 const TIP = { thumb:4, index:8, middle:12, ring:16, pinky:20 }
 const PIP = { thumb:3, index:6, middle:10, ring:14, pinky:18 }
 const MCP = { thumb:2, index:5, middle:9, ring:13, pinky:17 }
 
-function isFingerExtended(hand,f){ 
+const fingerHistory = { left:[], right:[] }
+const HISTORY_LEN = 3
+let lastSpokenRight = 0, lastSpokenLeft = 0
+const COOLDOWN_MS = 2000
+
+function isFingerExtended(hand,f){
   if(!hand) return false
-  const tip=hand[TIP[f]], pip=hand[PIP[f]], mcp=hand[MCP[f]]
+  const tip = hand[TIP[f]], pip = hand[PIP[f]], mcp = hand[MCP[f]]
   if(!tip||!pip||!mcp) return false
-  if(f!=='thumb') return tip.y<pip.y-0.01
-  return Math.abs(tip.x-mcp.x)>0.04 && Math.abs(tip.x-mcp.x)>Math.abs(tip.y-mcp.y)*0.6
+  const deltaY = pip.y - tip.y
+  const deltaX = Math.abs(tip.x - mcp.x)
+  if(f!=='thumb') return deltaY > 0.02
+  const angle = Math.atan2(tip.y-mcp.y, tip.x-mcp.x)
+  return angle < -0.2
 }
 
 function countExtendedFingers(hand){
@@ -211,46 +204,45 @@ function countExtendedFingers(hand){
   },0)
 }
 
-/* Cooldown per gesture */
-let lastSpokenRight = 0
-let lastSpokenLeft = 0
-const COOLDOWN_MS = 2000
-
-const perkenalanGestures = {
-  1: 'Hidup Jokowi!',
-  2: 'Hidup Jokowi',
-  3: 'Hidup Jokowi!',
-  4: 'Hidup Jokowi.',
-  5: 'Terima kasih!'
+/* Moving average filter */
+function filterHistory(handName, count){
+  const hist = handName==='left' ? fingerHistory.left : fingerHistory.right
+  hist.push(count)
+  if(hist.length>HISTORY_LEN) hist.shift()
+  const sum = hist.reduce((a,b)=>a+b,0)
+  return Math.round(sum / hist.length)
 }
+
+/* Perkenalan gesture */
+const perkenalanGestures = {1:'Hidup Jokowi!',2:'Hidup Jokowi',3:'Hidup Jokowi!',4:'Hidup Jokowi.',5:'Terima kasih!'}
 
 function detectFingerNumber(left,right){
   const now = Date.now()
   if(right){
-    const n = countExtendedFingers(right)
+    const n = filterHistory('right', countExtendedFingers(right))
     rightFingerStatus.value = n+' jari'
-    if(n!==lastSpokenRight && now - lastSpokenRight > COOLDOWN_MS){
+    if(now - lastSpokenRight > COOLDOWN_MS){
       triggerGesture(`${n} jari`, perkenalanGestures[n])
       lastSpokenRight = now
     }
   }
   if(left){
-    const n = countExtendedFingers(left)
+    const n = filterHistory('left', countExtendedFingers(left))
     leftFingerStatus.value = n+' jari'
-    if(n!==lastSpokenLeft && now - lastSpokenLeft > COOLDOWN_MS){
+    if(now - lastSpokenLeft > COOLDOWN_MS){
       triggerGesture(`${n} jari`, perkenalanGestures[n])
       lastSpokenLeft = now
     }
   }
 }
 
-function triggerGesture(name, text=null){
+function triggerGesture(name,text=null){
   detectedGesture.value = name
-  overlayTemporary(text || name)
+  overlayTemporary(text||name)
   if(text) speakText(text)
 }
 
-/* ========= OnResults ========= */
+/* ===== OnResults ===== */
 function onResults(results){
   debug.value.onResultsCalled = true
   debug.value.leftHandLandmarks = !!results.leftHandLandmarks
@@ -279,36 +271,32 @@ function onResults(results){
   detectFingerNumber(results.leftHandLandmarks, results.rightHandLandmarks)
 }
 
-/* ========= Init ========= */
+/* ===== Init ===== */
 onMounted(async ()=>{
   await enumerateVideoDevices()
   await startCamera(selectedDeviceId.value)
 
   const wait = () => new Promise(res=>{
-    const check=()=>{
-      if(window.Holistic && window.Camera) return res(true)
-      setTimeout(check,50)
-      check()
-    }
+    const check=()=>{ if(window.Holistic && window.Camera) return res(true); setTimeout(check,50); check() }
     check()
   })
   await wait()
 
   try {
-    holistic = new window.Holistic({ locateFile: (f)=>`https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${f}` })
-    holistic.setOptions({ modelComplexity:0, smoothLandmarks:true, minDetectionConfidence:0.5, minTrackingConfidence:0.5 })
+    holistic = new window.Holistic({ locateFile: f=>`https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${f}` })
+    holistic.setOptions({ modelComplexity:1, smoothLandmarks:true, minDetectionConfidence:0.6, minTrackingConfidence:0.6 })
     holistic.onResults(onResults)
 
     let lastSent = 0
     camera = new window.Camera(videoRef.value, {
       onFrame: async()=>{
         const now = Date.now()
-        if(now - lastSent > 100){ // 10fps
+        if(now - lastSent > 66){ // ~15 fps
           await holistic.send({image:videoRef.value})
           lastSent = now
         }
       },
-      width:320, height:240
+      width:480, height:360
     })
     camera.start()
   } catch(e){ debug.value.lastError = e.message }
@@ -316,7 +304,7 @@ onMounted(async ()=>{
 
 onBeforeUnmount(()=>{ stopCamera() })
 
-/* ========= Template exposed ========= */
+/* ===== Template functions ===== */
 function toggleAudio(){ audioEnabled.value = !audioEnabled.value }
 function takeScreenshot(){
   const link = document.createElement('a')
@@ -327,24 +315,24 @@ function takeScreenshot(){
 </script>
 
 <style scoped>
-.gesture-root{ padding:16px; max-width:800px; margin:0 auto; font-family:Inter,Arial,sans-serif }
-.top-row{ display:flex; gap:12px; flex-wrap:wrap; align-items:flex-start }
-.video-wrap{ position:relative; width:100%; max-width:320px }
-.video{ width:100%; border-radius:12px; background:#000 }
-.canvas{ position:absolute; top:0; left:0; width:100%; height:100%; border-radius:12px; pointer-events:none }
-.overlay-text{ position:absolute; left:50%; top:10%; transform:translateX(-50%); background:rgba(0,0,0,0.45); color:#fff; padding:6px 10px; border-radius:10px; font-weight:600; font-size:16px; text-align:center; word-break:break-word }
-.panel{ min-width:240px; padding:12px; background:#fff; border-radius:10px; box-shadow:0 4px 15px rgba(0,0,0,0.08) }
-.control-row{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin:6px 0 }
-.control-row label{ min-width:100px; font-size:13px }
-.control-row select,input{ padding:5px; border-radius:6px; border:1px solid #ccc; font-size:14px }
-.control-row button{ padding:6px 8px; border-radius:6px; border:none; background:#0066ff; color:#fff; cursor:pointer; font-size:14px }
-.status{ margin-top:6px; font-size:13px }
-.debug{ margin-top:8px; color:#666; font-size:12px }
-.debug-toggle{ margin-top:6px; padding:4px 8px; background:#ff9900; color:#fff; border-radius:6px; border:none; cursor:pointer; font-size:13px }
+.gesture-root{padding:16px;max-width:800px;margin:0 auto;font-family:Inter,Arial,sans-serif}
+.top-row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start}
+.video-wrap{position:relative;width:100%;max-width:480px}
+.video{width:100%;border-radius:12px;background:#000}
+.canvas{position:absolute;top:0;left:0;width:100%;height:100%;border-radius:12px;pointer-events:none}
+.overlay-text{position:absolute;left:50%;top:10%;transform:translateX(-50%);background:rgba(0,0,0,0.45);color:#fff;padding:6px 10px;border-radius:10px;font-weight:600;font-size:16px;text-align:center;word-break:break-word}
+.panel{min-width:240px;padding:12px;background:#fff;border-radius:10px;box-shadow:0 4px 15px rgba(0,0,0,0.08)}
+.control-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:6px 0}
+.control-row label{min-width:100px;font-size:13px}
+.control-row select,input{padding:5px;border-radius:6px;border:1px solid #ccc;font-size:14px}
+.control-row button{padding:6px 8px;border-radius:6px;border:none;background:#0066ff;color:#fff;cursor:pointer;font-size:14px}
+.status{margin-top:6px;font-size:13px}
+.debug{margin-top:8px;color:#666;font-size:12px}
+.debug-toggle{margin-top:6px;padding:4px 8px;background:#ff9900;color:#fff;border-radius:6px;border:none;cursor:pointer;font-size:13px}
 
 @media(max-width:480px){
-  .top-row{ flex-direction:column; }
-  .panel{ width:100%; }
-  .video-wrap{ max-width:100%; }
+  .top-row{flex-direction:column;}
+  .panel{width:100%;}
+  .video-wrap{max-width:100%;}
 }
 </style>
