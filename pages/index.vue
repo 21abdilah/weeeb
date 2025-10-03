@@ -1,7 +1,6 @@
 <template>
   <div class="home">
-    <h1 class="title">👋</h1>
-    <ClientOnly fallback="<p>Loading camera...</p>">
+    <ClientOnly fallback="<p>Antosan sakedap...</p>">
       <WebcamGesture />
     </ClientOnly>
   </div>
