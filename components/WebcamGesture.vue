@@ -226,7 +226,7 @@ function filterHistory(handName,count){
 }
 
 /* Perkenalan gesture */
-const perkenalanGestures = {1:'Salam, Perkenalkan Saya Hilal Abdilah!',2:'Dari prodi Teknik Informatika',3:'HOBI : Memasak!',4:'Alasan Masuk Karena Lokasi Yanh Strategis Dan Nyaman .',5:'Terima kasih!'}
+const perkenalanGestures = {1:'Salam, Perkenalkan Saya Hilal Abdilah!',2:'Dari prodi Teknik Informatika',3:'HOBI : Memasak!',4:'Alasan Masuk Karena Lokasi Yang Strategis Dan Nyaman .',5:'Terima kasih!'}
 
 function detectFingerNumber(left,right){
   const now = Date.now()
