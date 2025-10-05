@@ -53,7 +53,6 @@
         </div>
 
         <hr />
-
         <div class="status">
           <div><strong>Last Gesture:</strong> {{ detectedGesture || '-' }}</div>
           <div><strong>Right Finger:</strong> {{ rightFingerStatus || '-' }}</div>
@@ -61,7 +60,11 @@
         </div>
 
         <div class="debug" v-if="showDebug">
-          <small>Debug: onResultsCalled: {{ debug.onResultsCalled ? 'Ya' : 'Tidak' }} | Hands: L={{ debug.leftHandLandmarks ? 'Ada' : 'Tidak' }}, R={{ debug.rightHandLandmarks ? 'Ada' : 'Tidak' }}</small>
+          <small>
+            Debug: onResultsCalled: {{ debug.onResultsCalled ? 'Ya' : 'Tidak' }} | 
+            Hands: L={{ debug.leftHandLandmarks ? 'Ada' : 'Tidak' }}, 
+            R={{ debug.rightHandLandmarks ? 'Ada' : 'Tidak' }}
+          </small>
           <div v-if="debug.lastError" style="color:red">{{ debug.lastError }}</div>
         </div>
         <button @click="showDebug=!showDebug" class="debug-toggle">Toggle Debug</button>
@@ -113,8 +116,8 @@ async function startCamera(deviceId){
   stopCamera()
   try {
     const constraints = deviceId
-      ? { video:{ deviceId:{exact:deviceId}, width:480, height:360, frameRate:{ideal:15} } }
-      : { video:{ facingMode:{ideal:'user'}, width:480, height:360, frameRate:{ideal:15} } }
+      ? { video:{ deviceId:{exact:deviceId}, width:{ideal:640}, height:{ideal:480}, frameRate:{ideal:30, max:30} } }
+      : { video:{ facingMode:{ideal:'user'}, width:{ideal:640}, height:{ideal:480}, frameRate:{ideal:30, max:30} } }
     localStream = await navigator.mediaDevices.getUserMedia(constraints)
     videoRef.value.srcObject = localStream
     await videoRef.value.play()
@@ -123,7 +126,6 @@ async function startCamera(deviceId){
 }
 
 function stopCamera(){
-  if(camera && camera.stop) camera.stop()
   if(localStream) localStream.getTracks().forEach(t=>t.stop())
   camera = null
   localStream = null
@@ -133,8 +135,8 @@ async function switchCamera(){ await startCamera(selectedDeviceId.value) }
 
 /* ===== Canvas ===== */
 function adaptCanvas(){
-  const w = videoRef.value.clientWidth || 480
-  const h = videoRef.value.clientHeight || 360
+  const w = videoRef.value.videoWidth || 640
+  const h = videoRef.value.videoHeight || 480
   canvasRef.value.width = w
   canvasRef.value.height = h
   ctx.value = canvasRef.value.getContext('2d')
@@ -159,64 +161,58 @@ function speakText(text){
   if(voice) u.voice = voice
   window.speechSynthesis.speak(u)
 }
-
 function testVoice(){
   const sample = lang.value.startsWith('id') ? 'Halo, ini tes suara.' : 'Hello, this is a voice test.'
   speakText(sample)
 }
-
 const voicesFiltered = computed(()=> voices.value.filter(v=>v.lang.startsWith(lang.value.split('-')[0])))
 
 /* ===== Overlay ===== */
 let overlayTimer = null
-function overlayTemporary(text, ms=1800){
+function overlayTemporary(text, ms=2000){
   overlayText.value = text
   if(overlayTimer) clearTimeout(overlayTimer)
   overlayTimer = setTimeout(()=> overlayText.value='', ms)
 }
 
-/* ===== Gesture Detection ===== */
-const TIP = { thumb:4, index:8, middle:12, ring:16, pinky:20 }
-const PIP = { thumb:3, index:6, middle:10, ring:14, pinky:18 }
-const MCP = { thumb:2, index:5, middle:9, ring:13, pinky:17 }
+/* ===== Filter landmark (stabilizer) ===== */
+function smoothLandmarks(current, prev, alpha=0.6){
+  if(!prev || !current) return current
+  return current.map((p,i)=>({
+    x: prev[i].x * alpha + p.x * (1 - alpha),
+    y: prev[i].y * alpha + p.y * (1 - alpha),
+    z: prev[i].z * alpha + p.z * (1 - alpha)
+  }))
+}
 
+/* ===== Gesture Detection ===== */
+let prevLeft=null, prevRight=null
 const fingerHistory = { left:[], right:[] }
 const HISTORY_LEN = 5
 let lastSpokenRight = 0, lastSpokenLeft = 0
-const COOLDOWN_MS = 2000
+const COOLDOWN_MS = 2500
 
-/* Hitung sudut antar sendi */
-function getAngle(a,b,c){
-  const ab = {x:b.x-a.x, y:b.y-a.y}
-  const cb = {x:b.x-c.x, y:b.y-c.y}
-  const dot = ab.x*cb.x + ab.y*cb.y
-  const mag = Math.hypot(ab.x,ab.y)*Math.hypot(cb.x,cb.y)
-  if(mag===0) return 0
-  return Math.acos(dot/mag)*(180/Math.PI)
+const perkenalanGestures = {
+  1:'Salam, Perkenalkan Saya Hilal Abdilah!',
+  2:'Dari prodi Teknik Informatika',
+  3:'HOBI : Memasak!',
+  4:'Alasan Masuk Karena Lokasi Yang Strategis Dan Nyaman.',
+  5:'Terima kasih!'
 }
 
-function isFingerExtended(hand,f){
-  if(!hand) return false
-  const mcp = hand[MCP[f]], pip = hand[PIP[f]], tip = hand[TIP[f]]
-  if(!mcp||!pip||!tip) return false
-  if(f==='thumb'){
-    const angle = Math.atan2(tip.y - mcp.y, tip.x - mcp.x)
-    return angle < -0.2
-  } else {
-    const angle = getAngle(mcp,pip,tip)
-    return angle > 160 // threshold jari lurus
-  }
+/* Perhitungan sederhana jari lurus (lebih stabil untuk HP) */
+function isFingerExtended(hand, tip, pip){
+  if(!hand || !hand[tip] || !hand[pip]) return false
+  const dy = hand[pip].y - hand[tip].y
+  return dy > 0.05 ? false : true
 }
 
 function countExtendedFingers(hand){
   if(!hand) return 0
-  return ['thumb','index','middle','ring','pinky'].reduce((acc,f)=>{
-    if(isFingerExtended(hand,f)) return acc+1
-    return acc
-  },0)
+  const pairs = [[4,3],[8,6],[12,10],[16,14],[20,18]]
+  return pairs.reduce((c,[tip,pip])=>c + (isFingerExtended(hand,tip,pip)?1:0),0)
 }
 
-/* Moving average filter */
 function filterHistory(handName,count){
   const hist = handName==='left' ? fingerHistory.left : fingerHistory.right
   hist.push(count)
@@ -225,13 +221,12 @@ function filterHistory(handName,count){
   return Math.round(sum / hist.length)
 }
 
-/* Perkenalan gesture */
-const perkenalanGestures = {1:'Salam, Perkenalkan Saya Hilal Abdilah!',2:'Dari prodi Teknik Informatika',3:'HOBI : Memasak!',4:'Alasan Masuk Karena Lokasi Yang Strategis Dan Nyaman .',5:'Terima kasih!'}
-
 function detectFingerNumber(left,right){
   const now = Date.now()
   if(right){
-    const n = filterHistory('right', countExtendedFingers(right))
+    const smoothRight = smoothLandmarks(right, prevRight)
+    prevRight = smoothRight
+    const n = filterHistory('right', countExtendedFingers(smoothRight))
     rightFingerStatus.value = n+' jari'
     if(now - lastSpokenRight > COOLDOWN_MS){
       triggerGesture(`${n} jari`, perkenalanGestures[n])
@@ -239,7 +234,9 @@ function detectFingerNumber(left,right){
     }
   }
   if(left){
-    const n = filterHistory('left', countExtendedFingers(left))
+    const smoothLeft = smoothLandmarks(left, prevLeft)
+    prevLeft = smoothLeft
+    const n = filterHistory('left', countExtendedFingers(smoothLeft))
     leftFingerStatus.value = n+' jari'
     if(now - lastSpokenLeft > COOLDOWN_MS){
       triggerGesture(`${n} jari`, perkenalanGestures[n])
@@ -266,17 +263,14 @@ function onResults(results){
 
   if(window.drawConnectors && window.drawLandmarks){
     if(showSkeletonHands.value){
-      if(results.leftHandLandmarks) window.drawConnectors(ctx.value, results.leftHandLandmarks, window.HAND_CONNECTIONS, {color:'#FF8800', lineWidth:2})
-      if(results.leftHandLandmarks) window.drawLandmarks(ctx.value, results.leftHandLandmarks, {color:'#FFFF00', lineWidth:1})
-      if(results.rightHandLandmarks) window.drawConnectors(ctx.value, results.rightHandLandmarks, window.HAND_CONNECTIONS, {color:'#00FFFF', lineWidth:2})
-      if(results.rightHandLandmarks) window.drawLandmarks(ctx.value, results.rightHandLandmarks, {color:'#FF00FF', lineWidth:1})
-    }
-    if(showSkeletonPose.value && results.poseLandmarks){
-      window.drawConnectors(ctx.value, results.poseLandmarks, window.POSE_CONNECTIONS, {color:'#00FF00', lineWidth:2})
-      window.drawLandmarks(ctx.value, results.poseLandmarks, {color:'#FF0000', lineWidth:1})
-    }
-    if(showSkeletonFace.value && results.faceLandmarks){
-      window.drawLandmarks(ctx.value, results.faceLandmarks, {color:'#8888FF', lineWidth:0.5})
+      if(results.leftHandLandmarks){
+        window.drawConnectors(ctx.value, results.leftHandLandmarks, window.HAND_CONNECTIONS, {color:'#FF8800', lineWidth:2})
+        window.drawLandmarks(ctx.value, results.leftHandLandmarks, {color:'#FFFF00', lineWidth:1})
+      }
+      if(results.rightHandLandmarks){
+        window.drawConnectors(ctx.value, results.rightHandLandmarks, window.HAND_CONNECTIONS, {color:'#00FFFF', lineWidth:2})
+        window.drawLandmarks(ctx.value, results.rightHandLandmarks, {color:'#FF00FF', lineWidth:1})
+      }
     }
   }
 
@@ -288,27 +282,25 @@ onMounted(async ()=>{
   await enumerateVideoDevices()
   await startCamera(selectedDeviceId.value)
 
-  const wait = () => new Promise(res=>{
-    const check=()=>{ if(window.Holistic && window.Camera) return res(true); setTimeout(check,50); check() }
+  // Tunggu library Mediapipe siap
+  await new Promise(res=>{
+    const check = ()=> (window.Holistic && window.Camera) ? res(true) : setTimeout(check, 80)
     check()
   })
-  await wait()
 
   try {
     holistic = new window.Holistic({ locateFile: f=>`https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${f}` })
-    holistic.setOptions({ modelComplexity:1, smoothLandmarks:true, minDetectionConfidence:0.6, minTrackingConfidence:0.6 })
+    holistic.setOptions({ 
+      modelComplexity: 0, 
+      smoothLandmarks: true, 
+      minDetectionConfidence: 0.5, 
+      minTrackingConfidence: 0.5 
+    })
     holistic.onResults(onResults)
 
-    let lastSent = 0
     camera = new window.Camera(videoRef.value, {
-      onFrame: async()=>{
-        const now = Date.now()
-        if(now - lastSent > 66){ // ~15 fps
-          await holistic.send({image:videoRef.value})
-          lastSent = now
-        }
-      },
-      width:480, height:360
+      onFrame: async()=>{ await holistic.send({image:videoRef.value}) },
+      width: 640, height: 480
     })
     camera.start()
   } catch(e){ debug.value.lastError = e.message }
@@ -316,7 +308,6 @@ onMounted(async ()=>{
 
 onBeforeUnmount(()=>{ stopCamera() })
 
-/* ===== Template functions ===== */
 function toggleAudio(){ audioEnabled.value = !audioEnabled.value }
 function takeScreenshot(){
   const link = document.createElement('a')
@@ -327,7 +318,7 @@ function takeScreenshot(){
 </script>
 
 <style scoped>
-.gesture-root{padding:16px;max-width:800px;margin:0 auto;font-family:Inter,Arial,sans-serif}
+.gesture-root{padding:16px;max-width:850px;margin:0 auto;font-family:Inter,Arial,sans-serif}
 .top-row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start}
 .video-wrap{position:relative;width:100%;max-width:480px}
 .video{width:100%;border-radius:12px;background:#000}
